@@ -5,9 +5,9 @@
 ## Reporting a vulnerability
 
 Report privately via GitHub Security Advisories on
-`HazielMagallanes/rusty-skews`, or by email to the address in the git history.
-Please include a reproduction and the affected milestone/crate. We aim to
-acknowledge within 72 hours.
+`HazielMagallanes/rusty-skews`, or by email at
+contactamme.haziel@gmail.com. Please include a reproduction and the affected
+milestone/crate. We aim to acknowledge within 72 hours.
 
 Do **not** open public issues for exploitable problems.
 

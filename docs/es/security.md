@@ -5,9 +5,9 @@
 ## Reportar una vulnerabilidad
 
 Reportá en privado vía GitHub Security Advisories en
-`HazielMagallanes/rusty-skews`, o por correo a la dirección del historial de
-git. Incluí una reproducción y el hito/crate afectado. Apuntamos a acusar
-recibo dentro de 72 horas.
+`HazielMagallanes/rusty-skews`, o por correo a
+contactamme.haziel@gmail.com. Incluí una reproducción y el hito/crate afectado.
+Apuntamos a acusar recibo dentro de 72 horas.
 
 **No** abras issues públicos para problemas explotables.
 

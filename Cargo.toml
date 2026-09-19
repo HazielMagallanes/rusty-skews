@@ -48,7 +48,7 @@ edition = "2024"
 rust-version = "1.98"
 license = "MIT"
 publish = false
-authors = ["Haziel Magallanes <hazielescuela1@gmail.com>"]
+authors = ["Haziel Magallanes <contactamme.haziel@gmail.com>"]
 repository = "https://github.com/HazielMagallanes/rusty-skews"
 homepage = "https://github.com/HazielMagallanes/rusty-skews"
 
