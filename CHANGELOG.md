@@ -15,6 +15,15 @@ ships releases.
 
 ### Added
 
+* M1 kernel: effects-as-data `Shell` (`update(msg) -> Effects`) with the
+  compile-time module registry (ADR-0004); unknown module ids are rejected
+  with the list of known modules, and invalid reloads keep the last good
+  configuration.
+* Modules: `clock` (configurable strftime format), `cpu` (Intel `coretemp` +
+  AMD `k10temp`, fixture-tested) and `memory`; `workspaces` and `battery` are
+  registered placeholders until their slices land.
+* The shell binary now composes the bar plan from the kernel (config-driven
+  regions and module outputs) and executes kernel effects.
 * M0 scaffold: 19-crate workspace with strict layer boundaries and
   `forbid(unsafe_code)`; `rusty-skews`, `rusty-skews-ctl` and
   `rusty-skews-lock` binaries.

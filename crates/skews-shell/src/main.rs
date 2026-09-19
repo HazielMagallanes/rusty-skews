@@ -6,15 +6,16 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use skews_app::{ModuleOutput, ModuleSlot, Msg, Shell};
 use skews_config::{Config, default_config_path};
-use skews_core::Rect;
+use skews_core::{Effect, Effects, LogLevel, Rect};
 use skews_render::{FrameParams, GpuSurface, Renderer};
 use skews_theme::{Tokens, default_palette_path};
 use skews_wayland::{
     BarEvent, BarOptions, BarShell, Connection, ObjectId, display_handle, registry_queue_init,
     window_handle,
 };
-use tracing::{info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -65,10 +66,19 @@ fn run(args: &Args) -> Result<()> {
     let theme_path = default_palette_path();
     let theme = load_theme(&theme_path);
 
+    let mut registry = skews_app::Registry::new();
+    skews_modules::register_all(&mut registry);
+    let mut shell = Shell::new(config, registry).context("invalid configuration")?;
+
+    // Seed modules with their first value so the bar plan is complete before
+    // the event loop starts. Live ticking arrives with the calloop runtime.
+    apply_effects(shell.update(Msg::Tick { unix_ms: unix_ms() }));
+
     info!(
         config = %config_path.display(),
-        height = config.bar.height,
-        monitor = %config.bar.monitor,
+        height = shell.state().bar.height,
+        monitor = %shell.state().bar.monitor,
+        revision = shell.state().config_revision,
         "configuration loaded"
     );
 
@@ -89,8 +99,8 @@ fn run(args: &Args) -> Result<()> {
         &globals,
         &qh,
         BarOptions {
-            height: config.bar.height,
-            monitor: config.bar.monitor.clone(),
+            height: shell.state().bar.height,
+            monitor: shell.state().bar.monitor.clone(),
             namespace: String::from("rusty-skews-bar"),
         },
     )
@@ -166,6 +176,14 @@ fn run(args: &Args) -> Result<()> {
                         .context("failed to render the first bar frame")?;
 
                     info!(surface = ?id, width, height, "bar configured");
+
+                    let plan = shell.bar_plan();
+                    info!(
+                        left = %describe(&plan.left),
+                        center = %describe(&plan.center),
+                        right = %describe(&plan.right),
+                        "bar plan"
+                    );
                 }
                 BarEvent::Closed { id } => {
                     surfaces.remove(&id);
@@ -201,4 +219,42 @@ fn load_theme(path: &std::path::Path) -> Tokens {
             Tokens::default()
         }
     }
+}
+
+/// Executes kernel effects (the runtime half of effects-as-data).
+fn apply_effects(effects: Effects) {
+    for effect in effects {
+        match effect {
+            Effect::Log { level, message } => match level {
+                LogLevel::Debug => debug!(target: "rusty_skews::kernel", "{message}"),
+                LogLevel::Info => info!(target: "rusty_skews::kernel", "{message}"),
+                LogLevel::Warn => warn!(target: "rusty_skews::kernel", "{message}"),
+                LogLevel::Error => error!(target: "rusty_skews::kernel", "{message}"),
+            },
+            Effect::Redraw => debug!(target: "rusty_skews::kernel", "redraw requested"),
+        }
+    }
+}
+
+/// Human-readable description of a bar region's module slots.
+fn describe(slots: &[ModuleSlot]) -> String {
+    if slots.is_empty() {
+        return String::from("-");
+    }
+
+    slots
+        .iter()
+        .map(|slot| match &slot.output {
+            ModuleOutput::Empty => format!("{}:empty", slot.id),
+            ModuleOutput::Text(text) => format!("{}={text}", slot.id),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Milliseconds since the Unix epoch.
+fn unix_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis())
 }

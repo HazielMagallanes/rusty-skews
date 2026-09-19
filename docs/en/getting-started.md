@@ -103,8 +103,8 @@ Both files are optional; missing files fall back to built-in defaults and
   modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
   ```
 
-  Modules referenced here are validated against the registry in M1; today the
-  bar renders the placeholder regardless.
+  Modules referenced here are validated against the compile-time registry at
+  startup; unknown ids are rejected with the list of known modules.
 
 * Palette: `$XDG_CACHE_HOME/rusty-skews/colors.json` (usually
   `~/.cache/rusty-skews/colors.json`), a flat map in matugen style:

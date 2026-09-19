@@ -132,7 +132,11 @@ fn default_center() -> Vec<String> {
 }
 
 fn default_right() -> Vec<String> {
-    vec![String::from("cpu"), String::from("battery")]
+    vec![
+        String::from("cpu"),
+        String::from("memory"),
+        String::from("battery"),
+    ]
 }
 
 impl Config {
@@ -233,7 +237,7 @@ mod tests {
         assert_eq!(config.bar.monitor, "*");
         assert_eq!(config.bar.left, vec!["workspaces"]);
         assert_eq!(config.bar.center, vec!["clock"]);
-        assert_eq!(config.bar.right, vec!["cpu", "battery"]);
+        assert_eq!(config.bar.right, vec!["cpu", "memory", "battery"]);
         assert!(config.modules.is_empty());
     }
 

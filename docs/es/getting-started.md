@@ -103,8 +103,9 @@ Ambos archivos son opcionales; si faltan se usan los valores internos y
   modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
   ```
 
-  Los módulos referenciados se validan contra el registro en M1; hoy la barra
-  dibuja el marcador de posición igual.
+  Los módulos referenciados se validan contra el registro en tiempo de
+  compilación al arrancar; los ids desconocidos se rechazan con la lista de
+  módulos conocidos.
 
 * Paleta: `$XDG_CACHE_HOME/rusty-skews/colors.json` (normalmente
   `~/.cache/rusty-skews/colors.json`), un mapa plano estilo matugen:
