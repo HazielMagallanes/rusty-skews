@@ -41,6 +41,9 @@ Leer [docs/es/architecture.md](architecture.md) para los detalles y
 
 ## Inicio rápido
 
+> ¿Primera vez? La [guía de primeros pasos](getting-started.md) recorre
+> requisitos, la demo, la configuración y la solución de problemas.
+
 Requisitos: Rust 1.98+, una sesión Wayland (se recomienda Hyprland), Vulkan o
 GL, y `libwayland` (se usa el backend `system` para entregar superficies a wgpu).
 
@@ -115,6 +118,7 @@ xtask/  docs/  tests/  benches/
 
 | Documento | English | Español |
 |---|---|---|
+| Primeros pasos | [en](../en/getting-started.md) | [es](getting-started.md) |
 | Arquitectura | [en](../en/architecture.md) | [es](architecture.md) |
 | Presupuestos de rendimiento | [en](../en/performance.md) | [es](performance.md) |
 | Estrategia de testing | [en](../en/testing.md) | [es](testing.md) |

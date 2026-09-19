@@ -34,3 +34,5 @@ ships releases.
   ADRs 0001–0005; CI workflow (fmt, clippy, tests, docs, deny, audit).
 * Documentation is split into `docs/en/` and `docs/es/` with per-file language
   selectors and a translation guide for contributors.
+* Onboarding: getting started guide (EN/ES) covering prerequisites, the demo,
+  configuration and troubleshooting.

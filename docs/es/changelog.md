@@ -40,3 +40,5 @@ versiones.
   tests, docs, deny, audit).
 * La documentación se divide en `docs/en/` y `docs/es/` con selectores de idioma
   por archivo y una guía de traducción para contribuyentes.
+* Onboarding: guía de primeros pasos (EN/ES) con requisitos, la demo, la
+  configuración y solución de problemas.

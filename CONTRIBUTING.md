@@ -40,6 +40,9 @@ and either update the Spanish file in the same PR or mark it as outdated.
 
 ## Local gate
 
+> New here? Start with the
+> [getting started guide](docs/en/getting-started.md).
+
 ```sh
 cargo xt ci          # fmt + clippy + tests + doc + deny + audit
 cargo xt fmt         # formatting only

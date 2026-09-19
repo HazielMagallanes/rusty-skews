@@ -46,6 +46,9 @@ actualizá el archivo en español en el mismo PR o marcalo como desactualizado.
 
 ## Puerta local
 
+> ¿Primera vez? Empezá por la
+> [guía de primeros pasos](getting-started.md).
+
 ```sh
 cargo xt ci          # fmt + clippy + tests + doc + deny + audit
 cargo xt fmt         # solo formato
