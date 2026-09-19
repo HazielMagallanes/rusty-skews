@@ -15,6 +15,16 @@ versiones.
 
 ### Agregado
 
+* Kernel de M1: `Shell` con *effects-as-data* (`update(msg) -> Effects`) y el
+  registro de módulos en tiempo de compilación (ADR-0004); los ids de módulo
+  desconocidos se rechazan con la lista de conocidos, y una recarga inválida
+  conserva la última configuración válida.
+* Módulos: `clock` (formato strftime configurable), `cpu` (Intel `coretemp` +
+  AMD `k10temp`, con tests por fixtures) y `memory`; `workspaces` y `battery`
+  quedan como marcadores registrados hasta que lleguen sus slices.
+* El binario del shell ahora compone el plan de la barra desde el kernel
+  (regiones por configuración y salidas de los módulos) y ejecuta los efectos
+  del kernel.
 * Andamiaje M0: workspace de 19 crates con límites de capas estrictos y
   `forbid(unsafe_code)`; binarios `rusty-skews`, `rusty-skews-ctl` y
   `rusty-skews-lock`.

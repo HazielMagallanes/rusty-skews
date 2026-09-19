@@ -14,3 +14,7 @@ workspace = true
 
 [dependencies]
 skews-core = { workspace = true }
+skews-config = { workspace = true }
+skews-ipc-hyprland = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
