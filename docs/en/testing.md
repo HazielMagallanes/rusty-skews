@@ -1,5 +1,7 @@
 # Testing
 
+> 🌐 **English** · [Español](../es/testing.md)
+
 TDD is the working mode: every behavior change starts as a failing test.
 
 ## Test classes

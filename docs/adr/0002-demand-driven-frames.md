@@ -1,5 +1,7 @@
 # ADR-0002: Demand-driven frames with a serializable scene
 
+> 🌐 **English** · *ADRs are maintained in English only / los ADR se mantienen únicamente en inglés*
+
 * Status: accepted
 * Date: 2026-09-19
 

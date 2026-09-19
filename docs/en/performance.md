@@ -1,5 +1,7 @@
 # Performance
 
+> 🌐 **English** · [Español](../es/performance.md)
+
 The shell targets desktop-feel performance: zero idle cost, bounded frame
 latency and no allocation churn.
 

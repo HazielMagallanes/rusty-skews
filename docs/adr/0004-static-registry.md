@@ -1,5 +1,7 @@
 # ADR-0004: Static module registry, no dynamic plugins
 
+> 🌐 **English** · *ADRs are maintained in English only / los ADR se mantienen únicamente en inglés*
+
 * Status: accepted
 * Date: 2026-09-19
 

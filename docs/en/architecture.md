@@ -1,5 +1,7 @@
 # Architecture
 
+> 🌐 **English** · [Español](../es/architecture.md)
+
 > Status: M0. This document describes the target architecture; milestones land
 > the pieces in order. ADRs record the decisions.
 

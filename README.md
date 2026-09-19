@@ -1,5 +1,7 @@
 # rusty-skews
 
+> 🌐 **English** · [Español](docs/es/readme.md)
+
 A skewed, Rust-native Wayland desktop shell for Hyprland (and other
 layer-shell compositors), built for **performance, security and scalability**.
 
@@ -12,7 +14,7 @@ output). See the milestone table below.
 
 ---
 
-## Architecture at a glance / Arquitectura en resumen
+## Architecture at a glance
 
 ```
 L3  skews-app / skews-shell        kernel: update(msg) -> Effects, registry, bins
@@ -30,12 +32,12 @@ L0  skews-core, skews-config, skews-theme   (no I/O, trivially testable)
 * **`#![forbid(unsafe_code)]`** everywhere; the single audited `unsafe` block is
   wgpu surface creation in `skews-render`.
 
-Read [docs/architecture.md](docs/architecture.md) for details, and
+Read [docs/en/architecture.md](docs/en/architecture.md) for details, and
 [docs/adr/](docs/adr) for the decisions behind it.
 
 ---
 
-## Quick start / Inicio rápido
+## Quick start
 
 Requirements: Rust 1.98+, a Wayland session (Hyprland recommended), Vulkan or
 GL, and `libwayland` (the `system` backend is used to hand surfaces to wgpu).
@@ -70,7 +72,7 @@ modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
 
 ---
 
-## Milestones / Hitos
+## Milestones
 
 | Milestone | Scope | Status |
 |---|---|---|
@@ -82,7 +84,7 @@ modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
 | M5 | Window switcher and session lock (PAM) | ⏳ |
 | M6 | Settings and packaging (v0.1) | ⏳ |
 
-## Workspace layout / Estructura
+## Workspace layout
 
 ```
 crates/
@@ -107,16 +109,20 @@ crates/
 xtask/  docs/  tests/  benches/
 ```
 
-## Engineering standards / Estándares
+## Documentation
 
-* TDD: every feature starts as a failing test; six test classes (unit/property,
-  snapshots, D-Bus, headless Wayland, GPU goldens on lavapipe, perf).
-* CI gates: `fmt`, `clippy -D warnings`, tests, `cargo doc -D warnings`,
-  `cargo-deny`, `cargo-audit`.
-* Conventional Commits; bilingual docs (EN/ES); every public item documented.
+| Document | English | Español |
+|---|---|---|
+| Architecture | [en](docs/en/architecture.md) | [es](docs/es/architecture.md) |
+| Performance budgets | [en](docs/en/performance.md) | [es](docs/es/performance.md) |
+| Testing strategy | [en](docs/en/testing.md) | [es](docs/es/testing.md) |
+| Threat model | [en](docs/en/threat-model.md) | [es](docs/es/threat-model.md) |
+| Translation guide | [en](docs/en/translation-guide.md) | [es](docs/es/translation-guide.md) |
+| Decisions (ADRs) | [en only](docs/adr) | — |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and
+[SECURITY.md](SECURITY.md) for vulnerability reporting.
 
-## License / Licencia
+## License
 
 MIT — see [LICENSE](LICENSE).

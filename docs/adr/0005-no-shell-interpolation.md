@@ -1,5 +1,7 @@
 # ADR-0005: Never interpolate into a shell
 
+> 🌐 **English** · *ADRs are maintained in English only / los ADR se mantienen únicamente en inglés*
+
 * Status: accepted
 * Date: 2026-09-19
 

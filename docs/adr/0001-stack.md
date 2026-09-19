@@ -1,5 +1,7 @@
 # ADR-0001: Rendering stack — sctk + wgpu + cosmic-text + taffy
 
+> 🌐 **English** · *ADRs are maintained in English only / los ADR se mantienen únicamente en inglés*
+
 * Status: accepted
 * Date: 2026-09-19
 
@@ -23,7 +25,7 @@ kept small and snapshot-testable.
 ## Consequences
 
 * Maximum control over frame scheduling, damage tracking and allocations —
-  required to meet the budgets in `docs/performance.md`.
+  required to meet the budgets in `docs/en/performance.md`.
 * We own a widget layer, text integration and animation system; scope is
   mitigated by leaning on `taffy` (layout) and `cosmic-text` (text) instead of
   writing those engines, and by freezing the frame/scene model in ADR-0002.

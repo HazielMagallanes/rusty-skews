@@ -1,5 +1,7 @@
 # Security Policy
 
+> 🌐 **English** · [Español](docs/es/security.md)
+
 ## Reporting a vulnerability
 
 Report privately via GitHub Security Advisories on
@@ -19,7 +21,7 @@ include, for example:
   events, notification payloads, config and theme files (all fuzz targets).
 * Command execution: launching apps must never go through a shell; a
   `.desktop` `Exec` that can escape into shell interpretation is a vulnerability
-  (see ADR-0005).
+  (see [ADR-0005](docs/adr/0005-no-shell-interpolation.md)).
 * Session lock (`skews-lock`, M5): bypassing the lock surface, IPC exposure
   while locked, PAM misuse, or lock-state desynchronization.
 * Supply chain: unexpected network/filesystem behavior from dependencies.
@@ -34,5 +36,5 @@ include, for example:
 
 ## Threat model
 
-See [docs/security.md](docs/security.md) for the full model, including the
-lockscreen threat analysis landing in M5.
+See [docs/en/threat-model.md](docs/en/threat-model.md) for the full model,
+including the lockscreen threat analysis landing in M5.

@@ -1,4 +1,6 @@
-# Security
+# Threat model
+
+> 🌐 **English** · [Español](../es/threat-model.md)
 
 ## Assets
 
