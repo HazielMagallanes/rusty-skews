@@ -22,6 +22,10 @@
 | Lockscreen (M5) | Lock bypass | Dedicated minimal binary, no IPC surface while locked, `ext-session-lock-v1`, PAM in an isolated FFI crate, threat-model document, fuzz + test matrix |
 | Supply chain | Malicious dependency | `cargo-deny` (advisories, licenses, bans, sources), `cargo-audit`, pinned lockfile, `--locked` CI, Renovate |
 
+Known tracked exception: `ttf-parser` (RUSTSEC-2026-0192) is unmaintained but
+not vulnerable; it is transitive through `cosmic-text → fontdb` and is ignored
+in `deny.toml` until those crates migrate to `skrifa`.
+
 ## Invariants
 
 * `unsafe` is forbidden workspace-wide. The single exception is the audited

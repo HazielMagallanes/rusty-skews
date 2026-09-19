@@ -23,6 +23,10 @@
 | Bloqueo de pantalla (M5) | Evasión del bloqueo | Binario dedicado y mínimo, sin superficie IPC mientras está bloqueado, `ext-session-lock-v1`, PAM en una crate FFI aislada, documento de modelo de amenazas, fuzz + matriz de tests |
 | Cadena de suministro | Dependencia maliciosa | `cargo-deny` (advisories, licencias, bans, sources), `cargo-audit`, lockfile fijado, CI con `--locked`, Renovate |
 
+Excepción rastreada conocida: `ttf-parser` (RUSTSEC-2026-0192) está sin
+mantenimiento pero no es vulnerable; es transitiva vía `cosmic-text → fontdb` y
+se ignora en `deny.toml` hasta que esas crates migren a `skrifa`.
+
 ## Invariantes
 
 * `unsafe` está prohibido en todo el workspace. La única excepción es el puente

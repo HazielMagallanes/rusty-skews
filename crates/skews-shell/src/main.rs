@@ -8,8 +8,10 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use skews_app::{ModuleOutput, ModuleSlot, Msg, Shell};
 use skews_config::{Config, default_config_path};
-use skews_core::{Effect, Effects, LogLevel, Rect};
-use skews_render::{FrameParams, GpuSurface, Renderer};
+use skews_core::{Effect, Effects, LogLevel};
+use skews_layout::{BarLayoutOptions, TextMetrics};
+use skews_render::{GpuSurface, Renderer};
+use skews_text::TextEngine;
 use skews_theme::{Tokens, default_palette_path};
 use skews_wayland::{
     BarEvent, BarOptions, BarShell, Connection, ObjectId, display_handle, registry_queue_init,
@@ -65,6 +67,7 @@ fn run(args: &Args) -> Result<()> {
     let (config, config_path) = load_config(args.config.clone())?;
     let theme_path = default_palette_path();
     let theme = load_theme(&theme_path);
+    let mut text_engine = TextEngine::new(theme.font_family.clone());
 
     let mut registry = skews_app::Registry::new();
     skews_modules::register_all(&mut registry);
@@ -161,19 +164,11 @@ fn run(args: &Args) -> Result<()> {
                         .configure_surface(gpu, width, height)
                         .context("failed to configure the GPU surface")?;
 
-                    let dot = 24.min(height.saturating_sub(8)).max(4);
-                    let dot_x = width.saturating_sub(dot) / 2;
-                    let dot_y = height.saturating_sub(dot) / 2;
-                    let params = FrameParams {
-                        clear: theme.surface_container.with_alpha(0.9),
-                        rect: Rect::new(dot_x as i32, dot_y as i32, dot, dot),
-                        rect_color: theme.primary,
-                        radius: dot as f32 / 2.0,
-                    };
-
+                    let scene = build_scene(&shell, &mut text_engine, &theme, width, height)
+                        .context("failed to build the bar scene")?;
                     renderer
-                        .render(gpu, &params)
-                        .context("failed to render the first bar frame")?;
+                        .render_scene(gpu, &scene, &mut text_engine)
+                        .context("failed to render the bar")?;
 
                     info!(surface = ?id, width, height, "bar configured");
 
@@ -234,6 +229,77 @@ fn apply_effects(effects: Effects) {
             Effect::Redraw => debug!(target: "rusty_skews::kernel", "redraw requested"),
         }
     }
+}
+
+/// Builds the bar scene from the kernel plan, the layout pass and the theme.
+fn build_scene(
+    shell: &Shell,
+    text_engine: &mut TextEngine,
+    theme: &Tokens,
+    width: u32,
+    height: u32,
+) -> Result<skews_ui::Scene> {
+    const TEXT_SIZE: f32 = 12.0;
+
+    let plan = shell.bar_plan();
+    let mut measure = |slots: &[ModuleSlot]| -> Vec<(String, TextMetrics)> {
+        slots
+            .iter()
+            .filter_map(|slot| match &slot.output {
+                ModuleOutput::Text(text) => {
+                    let shaped = text_engine.measure(text, TEXT_SIZE);
+                    Some((
+                        text.clone(),
+                        TextMetrics {
+                            width: shaped.width,
+                            height: shaped.height,
+                        },
+                    ))
+                }
+                ModuleOutput::Empty => None,
+            })
+            .collect()
+    };
+
+    let left = measure(&plan.left);
+    let center = measure(&plan.center);
+    let right = measure(&plan.right);
+
+    let metrics = |items: &[(String, TextMetrics)]| {
+        items
+            .iter()
+            .map(|(_, metrics)| *metrics)
+            .collect::<Vec<_>>()
+    };
+    let layout = skews_layout::layout_bar(
+        BarLayoutOptions::new(width as f32, height as f32),
+        &metrics(&left),
+        &metrics(&center),
+        &metrics(&right),
+    )
+    .context("layout pass failed")?;
+
+    let mut texts = Vec::new();
+    for (positions, items) in [
+        (&layout.left, &left),
+        (&layout.center, &center),
+        (&layout.right, &right),
+    ] {
+        for (position, (text, _)) in positions.iter().zip(items.iter()) {
+            texts.push(skews_ui::BarText {
+                text: text.clone(),
+                x: position.x,
+                y: position.y,
+                size: TEXT_SIZE,
+                color: theme.on_surface,
+            });
+        }
+    }
+
+    Ok(skews_ui::build_bar_scene(
+        theme.surface_container.with_alpha(0.9),
+        &texts,
+    ))
 }
 
 /// Human-readable description of a bar region's module slots.

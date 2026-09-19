@@ -13,3 +13,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+taffy = { workspace = true }
+skews-ui = { workspace = true }

@@ -13,3 +13,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+cosmic-text = { workspace = true }
+thiserror = { workspace = true }

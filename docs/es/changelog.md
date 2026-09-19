@@ -15,6 +15,14 @@ versiones.
 
 ### Agregado
 
+* Núcleo de UI: `skews-text` (shaping con cosmic-text y fallback del sistema,
+  caché de formas, rasterizado de glifos), `skews-layout` (layout flex con
+  taffy para las regiones de la barra), `skews-ui` (escenas serializables) y un
+  atlas de glifos + pipeline de texto en wgpu; la barra ahora dibuja las
+  salidas de los módulos (reloj, temperatura de CPU, memoria).
+* Cadena de suministro: el aviso de falta de mantenimiento de `ttf-parser`
+  (RUSTSEC-2026-0192) queda documentado como excepción rastreada en `deny.toml`
+  y en el modelo de amenazas.
 * Kernel de M1: `Shell` con *effects-as-data* (`update(msg) -> Effects`) y el
   registro de módulos en tiempo de compilación (ADR-0004); los ids de módulo
   desconocidos se rechazan con la lista de conocidos, y una recarga inválida

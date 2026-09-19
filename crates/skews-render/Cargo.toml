@@ -26,3 +26,5 @@ tracing = { workspace = true }
 pollster = { workspace = true }
 raw-window-handle = { workspace = true }
 skews-core = { workspace = true }
+skews-text = { workspace = true }
+skews-ui = { workspace = true }
