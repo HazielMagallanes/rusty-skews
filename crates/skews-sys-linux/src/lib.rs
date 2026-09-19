@@ -97,6 +97,44 @@ fn parse_kib(value: &str) -> Option<f64> {
         .ok()
 }
 
+/// Battery state read from `/sys/class/power_supply`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryStatus {
+    /// Charge percentage (0-100).
+    pub percent: u8,
+    /// Whether the battery is charging or full.
+    pub charging: bool,
+}
+
+/// Reads the first `BAT*` supply under `root`.
+///
+/// Returns `None` when no battery is present or its files cannot be parsed.
+#[must_use]
+pub fn battery_status(root: &Path) -> Option<BatteryStatus> {
+    let entries = fs::read_dir(root).ok()?;
+
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with("BAT") {
+            continue;
+        }
+
+        let path = entry.path();
+        let Ok(capacity) = fs::read_to_string(path.join("capacity")) else {
+            continue;
+        };
+        let Ok(percent) = capacity.trim().parse::<u8>() else {
+            continue;
+        };
+
+        let status = fs::read_to_string(path.join("status")).unwrap_or_default();
+        let charging = matches!(status.trim(), "Charging" | "Full");
+
+        return Some(BatteryStatus { percent, charging });
+    }
+
+    None
+}
+
 /// Stateful CPU usage sampler based on `/proc/stat` deltas.
 #[derive(Debug, Default)]
 pub struct CpuSampler {
@@ -225,5 +263,27 @@ mod tests {
             sampler.sample_percent(Path::new("/nonexistent/proc/stat")),
             None
         );
+    }
+
+    #[test]
+    fn reads_battery_status() {
+        let status = super::battery_status(&fixture("power-supply")).unwrap();
+
+        assert_eq!(status.percent, 94);
+        assert!(!status.charging);
+    }
+
+    #[test]
+    fn detects_charging_battery() {
+        let status = super::battery_status(&fixture("power-supply-charging")).unwrap();
+
+        assert_eq!(status.percent, 41);
+        assert!(status.charging);
+    }
+
+    #[test]
+    fn no_battery_returns_none() {
+        assert_eq!(super::battery_status(&fixture("power-supply-none")), None);
+        assert_eq!(super::battery_status(Path::new("/nonexistent")), None);
     }
 }

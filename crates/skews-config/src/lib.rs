@@ -64,13 +64,22 @@ pub struct BarConfig {
     pub monitor: String,
     /// Modules placed in the left region.
     #[serde(default = "default_left")]
-    pub left: Vec<String>,
+    pub left: BarRegion,
     /// Modules placed in the center region.
     #[serde(default = "default_center")]
-    pub center: Vec<String>,
+    pub center: BarRegion,
     /// Modules placed in the right region.
     #[serde(default = "default_right")]
-    pub right: Vec<String>,
+    pub right: BarRegion,
+}
+
+/// A bar region: an ordered list of module ids.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BarRegion {
+    /// Module ids in display order.
+    #[serde(default)]
+    pub modules: Vec<String>,
 }
 
 impl Default for BarConfig {
@@ -89,9 +98,9 @@ impl BarConfig {
     /// Iterates over every configured region with its name.
     pub fn regions(&self) -> [(&'static str, &[String]); 3] {
         [
-            ("left", self.left.as_slice()),
-            ("center", self.center.as_slice()),
-            ("right", self.right.as_slice()),
+            ("left", self.left.modules.as_slice()),
+            ("center", self.center.modules.as_slice()),
+            ("right", self.right.modules.as_slice()),
         ]
     }
 }
@@ -104,8 +113,14 @@ fn default_monitor() -> String {
     String::from("*")
 }
 
-fn default_left() -> Vec<String> {
-    vec![String::from("workspaces")]
+fn region(modules: &[&str]) -> BarRegion {
+    BarRegion {
+        modules: modules.iter().map(|module| String::from(*module)).collect(),
+    }
+}
+
+fn default_left() -> BarRegion {
+    region(&["workspaces"])
 }
 
 /// Returns the default configuration path: `$XDG_CONFIG_HOME/rusty-skews/config.toml`.
@@ -127,16 +142,12 @@ pub fn config_path_in(config_home: Option<PathBuf>, home: Option<PathBuf>) -> Pa
     base.join("rusty-skews").join("config.toml")
 }
 
-fn default_center() -> Vec<String> {
-    vec![String::from("clock")]
+fn default_center() -> BarRegion {
+    region(&["clock"])
 }
 
-fn default_right() -> Vec<String> {
-    vec![
-        String::from("cpu"),
-        String::from("memory"),
-        String::from("battery"),
-    ]
+fn default_right() -> BarRegion {
+    region(&["cpu", "memory", "battery"])
 }
 
 impl Config {
@@ -235,9 +246,9 @@ mod tests {
 
         assert_eq!(config.bar.height, 32);
         assert_eq!(config.bar.monitor, "*");
-        assert_eq!(config.bar.left, vec!["workspaces"]);
-        assert_eq!(config.bar.center, vec!["clock"]);
-        assert_eq!(config.bar.right, vec!["cpu", "memory", "battery"]);
+        assert_eq!(config.bar.left.modules, vec!["workspaces"]);
+        assert_eq!(config.bar.center.modules, vec!["clock"]);
+        assert_eq!(config.bar.right.modules, vec!["cpu", "memory", "battery"]);
         assert!(config.modules.is_empty());
     }
 
@@ -248,9 +259,13 @@ mod tests {
             [bar]
             height = 40
             monitor = "DP-1"
-            left = ["workspaces", "media"]
-            center = ["clock"]
-            right = ["cpu", "battery", "tray"]
+
+            [bar.left]
+            modules = ["workspaces", "media"]
+            [bar.center]
+            modules = ["clock"]
+            [bar.right]
+            modules = ["cpu", "battery", "tray"]
 
             [modules.battery]
             format = "{percent}%"
@@ -268,10 +283,12 @@ mod tests {
     fn duplicate_modules_are_rejected() {
         let err = Config::from_toml_str(
             r#"
-            [bar]
-            left = ["clock"]
-            center = ["clock"]
-            right = []
+            [bar.left]
+            modules = ["clock"]
+            [bar.center]
+            modules = ["clock"]
+            [bar.right]
+            modules = []
             "#,
         )
         .unwrap_err();
@@ -284,7 +301,7 @@ mod tests {
     #[test]
     fn out_of_range_height_is_rejected() {
         for height in [0, MAX_BAR_HEIGHT + 1] {
-            let text = format!("[bar]\nheight = {height}\nleft=[]\ncenter=[]\nright=[]");
+            let text = format!("[bar]\nheight = {height}\n");
             let err = Config::from_toml_str(&text).unwrap_err();
 
             assert!(
@@ -304,10 +321,12 @@ mod tests {
     fn empty_module_ids_are_rejected() {
         let err = Config::from_toml_str(
             r#"
-            [bar]
-            left = [""]
-            center = []
-            right = []
+            [bar.left]
+            modules = [""]
+            [bar.center]
+            modules = []
+            [bar.right]
+            modules = []
             "#,
         )
         .unwrap_err();

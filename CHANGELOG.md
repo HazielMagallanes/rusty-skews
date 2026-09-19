@@ -15,6 +15,16 @@ ships releases.
 
 ### Added
 
+* Runtime: calloop event loop with a one-second tick timer (clock and sensors
+  update live), configuration hot reload with identical-write deduplication and
+  last-good fallback, and automatic surface reconfiguration when the bar height
+  changes.
+* Compositor integration: Hyprland command-socket queries and the `.socket2`
+  event stream drive the `workspaces` module.
+* Modules: `workspaces` (Hyprland IPC) and `battery` (power-supply reader with
+  a charging suffix) replace their placeholders.
+* Config schema now matches the documented form
+  (`[bar.left] modules = [...]`).
 * UI core: `skews-text` (cosmic-text shaping with system fallback, shape cache,
   glyph rasterization), `skews-layout` (taffy flex layout for the bar regions),
   `skews-ui` (serializable scenes) and a wgpu glyph atlas + text pipeline; the

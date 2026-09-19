@@ -5,19 +5,23 @@
 
 #![forbid(unsafe_code)]
 
+pub mod battery;
 pub mod clock;
 pub mod cpu;
 pub mod memory;
-pub mod stubs;
+pub mod workspaces;
 
+pub use battery::Battery;
 pub use clock::Clock;
 pub use cpu::CpuTemp;
 pub use memory::Memory;
+pub use workspaces::Workspaces;
 
 /// Registers every built-in module in the registry.
 pub fn register_all(registry: &mut skews_app::Registry) {
     clock::register(registry);
     cpu::register(registry);
     memory::register(registry);
-    stubs::register_all(registry);
+    battery::register(registry);
+    workspaces::register(registry);
 }

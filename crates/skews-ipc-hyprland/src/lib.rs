@@ -6,6 +6,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod client;
+
+pub use client::{WorkspaceInfo, active_workspace, event_socket_path, spawn_event_listener};
+
 /// A single Hyprland IPC event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HyprEvent {
