@@ -1,0 +1,14 @@
+[package]
+name = "skews-layout"
+description = "Layout engine integration (taffy) and text measurement."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
