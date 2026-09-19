@@ -126,6 +126,19 @@ impl BarShell {
         self.events.drain(..).collect()
     }
 
+    /// Updates the bar height and exclusive zone on every surface.
+    ///
+    /// Surfaces are recommitted, so the compositor sends fresh configure
+    /// events with the new size.
+    pub fn set_bar_height(&mut self, height: u32) {
+        self.options.height = height;
+        for entry in self.surfaces.values() {
+            entry.layer.set_size(0, height);
+            entry.layer.set_exclusive_zone(height as i32);
+            entry.layer.commit();
+        }
+    }
+
     /// Returns the Wayland surface for a surface id.
     #[must_use]
     pub fn wl_surface(&self, id: &ObjectId) -> Option<&wl_surface::WlSurface> {

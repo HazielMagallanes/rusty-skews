@@ -137,9 +137,9 @@ impl Shell {
 
         BarPlan {
             height: self.state.bar.height,
-            left: self.state.bar.left.iter().map(slot).collect(),
-            center: self.state.bar.center.iter().map(slot).collect(),
-            right: self.state.bar.right.iter().map(slot).collect(),
+            left: self.state.bar.left.modules.iter().map(slot).collect(),
+            center: self.state.bar.center.modules.iter().map(slot).collect(),
+            right: self.state.bar.right.modules.iter().map(slot).collect(),
         }
     }
 
@@ -271,7 +271,7 @@ mod tests {
                 .join(", ")
         };
         Config::from_toml_str(&format!(
-            "[bar]\nheight = {height}\nleft = [{}]\ncenter = [{}]\nright = [{}]\n",
+            "[bar]\nheight = {height}\n[bar.left]\nmodules = [{}]\n[bar.center]\nmodules = [{}]\n[bar.right]\nmodules = [{}]\n",
             quoted(left),
             quoted(center),
             quoted(right)

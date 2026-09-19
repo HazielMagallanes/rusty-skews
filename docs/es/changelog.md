@@ -15,6 +15,17 @@ versiones.
 
 ### Agregado
 
+* Runtime: bucle de eventos con calloop y timer de un segundo (reloj y
+  sensores se actualizan en vivo), recarga en caliente de la configuración con
+  deduplicación de escrituras idénticas y fallback a la última válida, y
+  reconfiguración automática de superficies cuando cambia la altura de la
+  barra.
+* Integración con el compositor: consultas al socket de comandos de Hyprland y
+  el stream de eventos `.socket2` alimentan el módulo `workspaces`.
+* Módulos: `workspaces` (IPC de Hyprland) y `battery` (lector de
+  power-supply con sufijo de carga) reemplazan a los marcadores.
+* El esquema de configuración ahora coincide con la forma documentada
+  (`[bar.left] modules = [...]`).
 * Núcleo de UI: `skews-text` (shaping con cosmic-text y fallback del sistema,
   caché de formas, rasterizado de glifos), `skews-layout` (layout flex con
   taffy para las regiones de la barra), `skews-ui` (escenas serializables) y un
