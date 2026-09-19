@@ -1,0 +1,28 @@
+[package]
+name = "skews-ctl"
+description = "CLI: diagnostics, IPC control and benchmarks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "rusty-skews-ctl"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+wgpu = { workspace = true }
+skews-core = { workspace = true }
+skews-config = { workspace = true }
+skews-theme = { workspace = true }
+skews-wayland = { workspace = true }
+pollster = { workspace = true }
