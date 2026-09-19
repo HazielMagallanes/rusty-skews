@@ -28,6 +28,8 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Internal workspace crates are path-only dependencies by design.
+allow-wildcard-paths = true
 highlight = "all"
 
 [sources]
