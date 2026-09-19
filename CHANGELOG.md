@@ -15,6 +15,12 @@ ships releases.
 
 ### Added
 
+* UI core: `skews-text` (cosmic-text shaping with system fallback, shape cache,
+  glyph rasterization), `skews-layout` (taffy flex layout for the bar regions),
+  `skews-ui` (serializable scenes) and a wgpu glyph atlas + text pipeline; the
+  bar now renders module outputs (clock, CPU temperature, memory).
+* Supply chain: the `ttf-parser` unmaintained advisory (RUSTSEC-2026-0192) is
+  documented as a tracked exception in `deny.toml` and the threat model.
 * M1 kernel: effects-as-data `Shell` (`update(msg) -> Effects`) with the
   compile-time module registry (ADR-0004); unknown module ids are rejected
   with the list of known modules, and invalid reloads keep the last good

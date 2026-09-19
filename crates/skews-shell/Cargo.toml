@@ -29,3 +29,6 @@ skews-wayland = { workspace = true }
 wgpu = { workspace = true }
 skews-app = { workspace = true }
 skews-modules = { workspace = true }
+skews-layout = { workspace = true }
+skews-text = { workspace = true }
+skews-ui = { workspace = true }

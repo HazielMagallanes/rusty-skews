@@ -16,6 +16,13 @@ pub struct Rgba {
     pub a: f32,
 }
 
+impl Default for Rgba {
+    /// Transparent black, the neutral default for color fields.
+    fn default() -> Self {
+        Self::TRANSPARENT
+    }
+}
+
 impl Rgba {
     /// Fully transparent black.
     pub const TRANSPARENT: Self = Self {
