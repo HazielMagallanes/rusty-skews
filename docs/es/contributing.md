@@ -5,6 +5,8 @@
 Gracias por ayudar a construir rusty-skews. Este proyecto se desarrolla con un
 flujo TDD estricto y con presupuestos de seguridad y rendimiento revisables.
 
+Al participar, aceptás el [Código de conducta](code-of-conduct.md).
+
 ## Reglas básicas
 
 1. **Primero los tests.** Todo cambio de comportamiento empieza como un test

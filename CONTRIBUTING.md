@@ -5,6 +5,9 @@
 Thanks for helping build rusty-skews. This project is developed with a strict
 TDD workflow and a reviewable safety/performance budget.
 
+By participating, you agree to the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Ground rules
 
 1. **Tests first.** Every behavior change starts as a failing test in the crate

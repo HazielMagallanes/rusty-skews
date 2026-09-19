@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an idea or a module for rusty-skews
+title: "[feat] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Check the README milestones first — the feature
+        may already be planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that is currently hard or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? If it is a module/widget, describe its inputs and interactions.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      description: rusty-skews has strict engineering rules (see CONTRIBUTING.md).
+      options:
+        - label: The proposal fits the performance budgets (no polling loops, no per-frame allocations).
+        - label: The proposal does not require shelling out with interpolated input.
+        - label: The proposal can be covered by automated tests.

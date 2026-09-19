@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/HazielMagallanes/rusty-skews/security/advisories/new
+    about: Please report vulnerabilities privately — do not open a public issue.
+  - name: Getting started / Primeros pasos
+    url: https://github.com/HazielMagallanes/rusty-skews/blob/main/docs/en/getting-started.md
+    about: Prerequisites, running the demo, configuration and troubleshooting.
+  - name: Documentation (EN/ES)
+    url: https://github.com/HazielMagallanes/rusty-skews/tree/main/docs
+    about: Architecture, performance budgets, testing strategy, threat model.

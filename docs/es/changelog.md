@@ -42,3 +42,7 @@ versiones.
   por archivo y una guía de traducción para contribuyentes.
 * Onboarding: guía de primeros pasos (EN/ES) con requisitos, la demo, la
   configuración y solución de problemas.
+* Archivos de comunidad para el repositorio publicado: Código de conducta
+  ([Contributor Covenant 2.1](../../CODE_OF_CONDUCT.md), EN/ES), plantillas de
+  issues (reporte de bug, pedido de feature), plantilla de pull request y
+  configuración de Dependabot.

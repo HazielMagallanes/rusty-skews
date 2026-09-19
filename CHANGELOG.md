@@ -36,3 +36,7 @@ ships releases.
   selectors and a translation guide for contributors.
 * Onboarding: getting started guide (EN/ES) covering prerequisites, the demo,
   configuration and troubleshooting.
+* Community files for the published repository: Code of Conduct
+  ([Contributor Covenant 2.1](CODE_OF_CONDUCT.md), EN/ES), issue templates
+  (bug report, feature request), a pull request template and Dependabot
+  configuration.
