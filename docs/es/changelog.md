@@ -46,3 +46,8 @@ versiones.
   ([Contributor Covenant 2.1](../../CODE_OF_CONDUCT.md), EN/ES), plantillas de
   issues (reporte de bug, pedido de feature), plantilla de pull request y
   configuración de Dependabot.
+* Repositorio publicado en
+  [github.com/HazielMagallanes/rusty-skews](https://github.com/HazielMagallanes/rusty-skews):
+  público, `main` protegida por CI (fmt, clippy, tests, docs, cargo-deny,
+  cargo-audit), con actualizaciones de Dependabot y alertas de seguridad
+  activadas.

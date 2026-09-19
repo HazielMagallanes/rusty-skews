@@ -40,3 +40,7 @@ ships releases.
   ([Contributor Covenant 2.1](CODE_OF_CONDUCT.md), EN/ES), issue templates
   (bug report, feature request), a pull request template and Dependabot
   configuration.
+* Repository published at
+  [github.com/HazielMagallanes/rusty-skews](https://github.com/HazielMagallanes/rusty-skews):
+  public, CI-gated `main` (fmt, clippy, tests, docs, cargo-deny, cargo-audit),
+  Dependabot updates and security alerts enabled.
