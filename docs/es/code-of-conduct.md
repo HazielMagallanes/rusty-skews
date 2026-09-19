@@ -64,7 +64,7 @@ representante designado en un evento en línea o presencial.
 
 Las instancias de comportamiento abusivo, de acoso o inaceptable pueden
 reportarse a los líderes de la comunidad responsables de la aplicación por
-correo a contactamme.haziel@gmail.com, o a través de GitHub Security Advisories
+correo a contactame.haziel@gmail.com, o a través de GitHub Security Advisories
 en este repositorio. Todas las quejas serán revisadas e investigadas de forma
 rápida y justa.
 
