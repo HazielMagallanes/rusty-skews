@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod battery;
+pub mod bluetooth;
 pub mod clock;
 pub mod cpu;
 pub mod memory;
@@ -14,6 +15,7 @@ pub mod volume;
 pub mod workspaces;
 
 pub use battery::Battery;
+pub use bluetooth::Bluetooth;
 pub use clock::Clock;
 pub use cpu::CpuTemp;
 pub use memory::Memory;
@@ -29,5 +31,6 @@ pub fn register_all(registry: &mut skews_app::Registry) {
     battery::register(registry);
     volume::register(registry);
     network::register(registry);
+    bluetooth::register(registry);
     workspaces::register(registry);
 }

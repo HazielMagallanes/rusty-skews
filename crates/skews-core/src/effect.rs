@@ -37,6 +37,12 @@ pub enum Action {
     SetWifi(bool),
     /// Connect to a Wi-Fi network by SSID.
     ConnectWifi(String),
+    /// Enable or disable the Bluetooth adapter.
+    SetBluetooth(bool),
+    /// Connect a Bluetooth device by address.
+    ConnectBluetooth(String),
+    /// Disconnect a Bluetooth device by address.
+    DisconnectBluetooth(String),
 }
 
 /// A side effect requested by the kernel.
