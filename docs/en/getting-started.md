@@ -109,6 +109,19 @@ Both files are optional; missing files fall back to built-in defaults and
   Modules referenced here are validated against the compile-time registry at
   startup; unknown ids are rejected with the list of known modules.
 
+* Control: a running shell listens on
+  `$XDG_RUNTIME_DIR/rusty-skews/control.sock`. `rusty-skews-ctl toggle-bar`
+  hides or shows the bar (`show-bar` and `hide-bar` are explicit). Bind it in
+  your compositor:
+
+  ```ini
+  bind = SUPER, D, exec, rusty-skews-ctl toggle-bar
+  ```
+
+  Install both binaries with `cargo xt install` (`--release` for the release
+  profile). `[bar] hidden = true` starts the shell with the bar hidden;
+  hiding releases the bar's exclusive zone so windows use the space.
+
 * Palette: `$XDG_CACHE_HOME/rusty-skews/colors.json` (usually
   `~/.cache/rusty-skews/colors.json`), a flat map in matugen style:
 
@@ -127,6 +140,7 @@ Both files are optional; missing files fall back to built-in defaults and
 | Build error about `wayland-sys`/`libwayland` | Install `libwayland` and `pkg-config`. |
 | Shell exits with "failed to bind bar surfaces" | Compositor lacks `wlr-layer-shell` (e.g. GNOME); use Hyprland or another wlroots/smithay compositor. |
 | Bar not visible | The demo exits after N seconds; try `--seconds 15` or run `cargo run -p skews-shell` with `-vv` and watch the logs. |
+| Keybind does nothing | Run `rusty-skews-ctl toggle-bar` in a terminal: "no shell is listening" means the shell is not running (or `$XDG_RUNTIME_DIR` differs). Install the binaries with `cargo xt install`. |
 
 ## 7. Where to go next
 

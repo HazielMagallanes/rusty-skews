@@ -2,8 +2,9 @@
 
 mod doctor;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use skews_core::ControlCommand;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -26,6 +27,12 @@ enum Command {
         #[arg(long)]
         strict: bool,
     },
+    /// Hide the bar if visible, show it if hidden.
+    ToggleBar,
+    /// Show the bar.
+    ShowBar,
+    /// Hide the bar.
+    HideBar,
 }
 
 fn main() -> Result<()> {
@@ -37,5 +44,13 @@ fn main() -> Result<()> {
             print!("{}", report.text);
             std::process::exit(report.exit_code);
         }
+        Command::ToggleBar => control(ControlCommand::ToggleBar),
+        Command::ShowBar => control(ControlCommand::ShowBar),
+        Command::HideBar => control(ControlCommand::HideBar),
     }
+}
+
+/// Sends a control command to the running shell.
+fn control(command: ControlCommand) -> Result<()> {
+    skews_ipc_control::send(command).context("failed to reach the running shell")
 }

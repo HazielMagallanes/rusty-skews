@@ -13,6 +13,7 @@ skews-core = { path = "crates/skews-core" }
 skews-config = { path = "crates/skews-config" }
 skews-theme = { path = "crates/skews-theme" }
 skews-ipc-hyprland = { path = "crates/skews-ipc-hyprland" }
+skews-ipc-control = { path = "crates/skews-ipc-control" }
 skews-sys-linux = { path = "crates/skews-sys-linux" }
 skews-bus = { path = "crates/skews-bus" }
 skews-services = { path = "crates/skews-services" }
