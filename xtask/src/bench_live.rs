@@ -14,6 +14,8 @@ pub const BUDGET_IDLE_CPU_PERCENT: f64 = 0.2;
 pub const BUDGET_COLD_START_MS: u128 = 150;
 /// Budget for the idle RSS.
 pub const BUDGET_RSS_MIB: f64 = 60.0;
+/// How often long runs print a progress line (partial data survives a crash).
+pub const PROGRESS_INTERVAL: Duration = Duration::from_secs(1800);
 
 /// A `/proc` sample of the shell process.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -115,6 +117,7 @@ pub fn run(binary: &Path, seconds: u64, log_path: &Path) -> Result<Report> {
     let sampling_start = Instant::now();
 
     let deadline = Instant::now() + Duration::from_secs(seconds);
+    let mut next_progress = sampling_start + PROGRESS_INTERVAL;
     while Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(500));
         if let Ok(sample) = sample(pid) {
@@ -123,6 +126,20 @@ pub fn run(binary: &Path, seconds: u64, log_path: &Path) -> Result<Report> {
         }
         if let Ok(Some(_)) = child.try_wait() {
             anyhow::bail!("the shell exited during the measurement window");
+        }
+
+        if Instant::now() >= next_progress {
+            let elapsed = sampling_start.elapsed().as_secs_f64().max(1.0);
+            let ticks = last.cpu_ticks.saturating_sub(first.cpu_ticks);
+            let cpu = ticks as f64 / (100.0 * elapsed) * 100.0;
+            eprintln!(
+                "progress: elapsed={:.0}m rss={:.1} MiB peak={:.1} MiB cpu_avg={:.2}%",
+                elapsed / 60.0,
+                last.rss_kib as f64 / 1024.0,
+                last.peak_kib as f64 / 1024.0,
+                cpu,
+            );
+            next_progress += PROGRESS_INTERVAL;
         }
     }
 
