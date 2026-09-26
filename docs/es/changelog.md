@@ -15,6 +15,14 @@ versiones.
 
 ### Agregado
 
+* Slice de notificaciones de M2: servidor D-Bus
+  `org.freedesktop.Notifications` (zbus blocking, capacidades `body`/
+  `body-markup`), un módulo `notifications` con contador/indicador DND en la
+  barra, un panel central de notificaciones (toggle de DND + filas
+  descartables) y popups que expiran solos, se actualizan al reemplazarse y se
+  ocultan con No Molestar. Nueva acción `DismissNotification` y mensajes
+  `Notification`/`NotificationClosed`; superficies de popup (sin backdrop) en
+  la capa Wayland; `ListSelect` ahora informa su superficie de origen.
 * Slice de Bluetooth de M2: BlueZ sobre D-Bus (enumeración por ObjectManager +
   lectura tipada de propiedades), un módulo `bluetooth` que muestra `bt off`/
   `bt on` o el dispositivo conectado en la barra, y un panel de lista de
