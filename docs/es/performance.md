@@ -22,16 +22,21 @@ latencia de frame acotada y cero rotación de asignaciones.
 ## Medido (aceptación M1, 2026-09-25)
 
 Máquina de desarrollo: Intel Iris Xe (Vulkan), Hyprland, 1920×1080 a escala 1,
-build release, ventana de 60 s más un soak de 15 min.
+build release; una ventana de 60 s, un soak de 15 min y un soak de 7 h
+(50 367 muestras).
 
 | Métrica | Medido | Presupuesto |
 |---|---|---|
-| Arranque en frío → primer frame | 81 ms (corrida de 60 s) / 91 ms (soak) | < 150 ms |
-| CPU en reposo | 0.12 % (60 s) / 0.11 % (soak de 15 min) | < 0.2 % |
-| RSS en reposo | 31.6 MiB (60 s) / 34.4 MiB tras 15 min, sin deriva | < 60 MiB |
+| Arranque en frío → primer frame | 81 ms (60 s) / 91 ms (soaks) | < 150 ms |
+| CPU en reposo | 0.12 % (60 s) / 0.11 % (soaks de 15 min y 7 h) | < 0.2 % |
+| RSS en reposo | 31.6 MiB (60 s) / 34.4 MiB (15 min) / 43.3 MiB tras 7 h, pico 43.5 MiB, plano | < 60 MiB |
 
 Hallazgos de la corrida de aceptación:
 
+* El soak de 7 h muestra RSS plano (43.3 MiB a los 30 min y a las 7 h, pico
+  +0.2 MiB) y la misma CPU en reposo de 0.11 % que las corridas cortas: sin
+  fugas ni deriva. El RSS absoluto más alto que en M1 viene de las adiciones de
+  entrada y audio de M2.
 * La instancia de wgpu debe pedir **solo Vulkan**: `Backends::all()` también
   inicializa el driver GL, que mapea más de 100 MiB extra en Mesa. GL queda
   como respaldo cuando no hay adaptador Vulkan.

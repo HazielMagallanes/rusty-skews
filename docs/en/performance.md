@@ -22,16 +22,20 @@ latency and no allocation churn.
 ## Measured (M1 acceptance, 2026-09-25)
 
 Development machine: Intel Iris Xe (Vulkan), Hyprland, 1920×1080 at scale 1,
-release build, 60 s window plus a 15 min soak.
+release build; a 60 s window, a 15 min soak and a 7 h soak (50 367 samples).
 
 | Metric | Measured | Budget |
 |---|---|---|
-| Cold start → first frame | 81 ms (60 s run) / 91 ms (soak run) | < 150 ms |
-| Idle CPU | 0.12 % (60 s) / 0.11 % (15 min soak) | < 0.2 % |
-| RSS idle | 31.6 MiB (60 s) / 34.4 MiB after 15 min, no drift | < 60 MiB |
+| Cold start → first frame | 81 ms (60 s) / 91 ms (soak runs) | < 150 ms |
+| Idle CPU | 0.12 % (60 s) / 0.11 % (15 min and 7 h soaks) | < 0.2 % |
+| RSS idle | 31.6 MiB (60 s) / 34.4 MiB (15 min) / 43.3 MiB after 7 h, peak 43.5 MiB, flat | < 60 MiB |
 
 Findings from the acceptance run:
 
+* The 7 h soak shows flat RSS (43.3 MiB at 30 min and at 7 h, peak +0.2 MiB)
+  and the same 0.11 % idle CPU as the short runs — no leak, no drift. The
+  higher absolute RSS than the M1 measurement comes from the M2 input and
+  audio additions.
 * The wgpu instance must request **Vulkan only**: `Backends::all()` also
   initializes the GL driver, which maps over 100 MiB of extra memory on Mesa.
   GL remains as a fallback when no Vulkan adapter exists.
