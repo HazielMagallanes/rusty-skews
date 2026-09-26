@@ -117,6 +117,18 @@ pub enum BarEvent {
         /// Panel surface object id.
         id: ObjectId,
     },
+    /// A popup (notification toast) was created.
+    PopupShown {
+        /// Popup surface object id.
+        id: ObjectId,
+        /// Output the popup is bound to.
+        output: Option<String>,
+    },
+    /// A popup was hidden.
+    PopupHidden {
+        /// Popup surface object id.
+        id: ObjectId,
+    },
     /// A key was pressed while a shell surface had keyboard focus.
     KeyPressed {
         /// Raw keysym (`xkeysym` value).
@@ -163,6 +175,12 @@ struct PanelEntry {
     output_name: Option<String>,
 }
 
+/// A popup surface (notification toast): like a panel but without a backdrop.
+struct PopupEntry {
+    layer: LayerSurface,
+    output_name: Option<String>,
+}
+
 /// Layer-surface state machine for the bar.
 ///
 /// Feed it to a wayland-client [`EventQueue`](crate::EventQueue) and drain
@@ -177,6 +195,7 @@ pub struct BarShell {
     surfaces: HashMap<ObjectId, SurfaceEntry>,
     outputs: HashMap<String, wl_output::WlOutput>,
     panels: HashMap<ObjectId, PanelEntry>,
+    popups: HashMap<ObjectId, PopupEntry>,
     events: VecDeque<BarEvent>,
     pointer: Option<WlPointer>,
     keyboard: Option<WlKeyboard>,
@@ -211,6 +230,7 @@ impl BarShell {
             surfaces: HashMap::new(),
             outputs: HashMap::new(),
             panels: HashMap::new(),
+            popups: HashMap::new(),
             events: VecDeque::new(),
             pointer: None,
             keyboard: None,
@@ -235,6 +255,10 @@ impl BarShell {
             entry.layer.commit();
         }
         for entry in self.panels.values() {
+            entry.layer.set_margin(height as i32 + PANEL_GAP, 0, 0, 0);
+            entry.layer.commit();
+        }
+        for entry in self.popups.values() {
             entry.layer.set_margin(height as i32 + PANEL_GAP, 0, 0, 0);
             entry.layer.commit();
         }
@@ -313,6 +337,57 @@ impl BarShell {
         }
     }
 
+    /// Shows a popup surface (no backdrop) on an output.
+    pub fn show_popup(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        output_name: Option<&str>,
+        options: &PanelOptions,
+    ) -> Option<ObjectId> {
+        let output = output_name
+            .and_then(|name| self.outputs.get(name))
+            .or_else(|| self.outputs.values().next())
+            .cloned()?;
+
+        let surface = self.compositor.create_surface(qh);
+        let layer = self.layer_shell.create_layer_surface(
+            qh,
+            surface.clone(),
+            Layer::Overlay,
+            Some(options.namespace.as_str()),
+            Some(&output),
+        );
+        layer.set_anchor(Anchor::TOP | Anchor::RIGHT);
+        layer.set_size(options.width, options.height);
+        layer.set_margin(options.margin_top, options.margin_right, 0, 0);
+        layer.set_exclusive_zone(0);
+        layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+        layer.commit();
+
+        let id = surface.id();
+        self.popups.insert(
+            id.clone(),
+            PopupEntry {
+                layer,
+                output_name: output_name.map(str::to_owned),
+            },
+        );
+        self.events.push_back(BarEvent::PopupShown {
+            id: id.clone(),
+            output: output_name.map(str::to_owned),
+        });
+
+        Some(id)
+    }
+
+    /// Hides a popup surface.
+    pub fn hide_popup(&mut self, id: &ObjectId) {
+        if self.popups.remove(id).is_some() {
+            self.events
+                .push_back(BarEvent::PopupHidden { id: id.clone() });
+        }
+    }
+
     /// Returns the output name a surface belongs to.
     #[must_use]
     pub fn surface_output(&self, id: &ObjectId) -> Option<String> {
@@ -331,16 +406,20 @@ impl BarShell {
     fn owns_surface(&self, id: &ObjectId) -> bool {
         self.surfaces.contains_key(id)
             || self.panels.contains_key(id)
+            || self.popups.contains_key(id)
             || self.panels.values().any(|entry| entry.backdrop_id == *id)
     }
 
-    /// Returns the Wayland surface for a surface id (bars, panels, backdrops).
+    /// Returns the Wayland surface for a surface id (bars, panels, popups, backdrops).
     #[must_use]
     pub fn wl_surface(&self, id: &ObjectId) -> Option<&wl_surface::WlSurface> {
         if let Some(entry) = self.surfaces.get(id) {
             return Some(entry.layer.wl_surface());
         }
         if let Some(entry) = self.panels.get(id) {
+            return Some(entry.layer.wl_surface());
+        }
+        if let Some(entry) = self.popups.get(id) {
             return Some(entry.layer.wl_surface());
         }
         self.panels
@@ -660,6 +739,22 @@ impl OutputHandler for BarShell {
         for panel_id in panel_ids {
             self.hide_panel(&panel_id);
         }
+
+        let popup_ids: Vec<ObjectId> = self
+            .popups
+            .iter()
+            .filter(|(_, entry)| {
+                entry
+                    .output_name
+                    .as_ref()
+                    .and_then(|name| self.outputs.get(name))
+                    .is_some_and(|stored| stored.id() == id)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for popup_id in popup_ids {
+            self.hide_popup(&popup_id);
+        }
     }
 }
 
@@ -720,6 +815,11 @@ impl LayerShellHandler for BarShell {
         if let Some(entry) = self.panels.remove(&id) {
             let _ = entry;
             self.events.push_back(BarEvent::PanelHidden { id });
+            return;
+        }
+        if let Some(entry) = self.popups.remove(&id) {
+            let _ = entry;
+            self.events.push_back(BarEvent::PopupHidden { id });
             return;
         }
         self.remove_surface(id);

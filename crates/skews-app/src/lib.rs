@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use skews_config::Config;
-use skews_core::{Effect, Effects, InteractionKind, LogLevel, ModuleId};
+use skews_core::{Effect, Effects, InteractionKind, ListSource, LogLevel, ModuleId, Notification};
 
 mod module;
 mod registry;
@@ -43,13 +43,19 @@ pub enum Msg {
         /// Module whose panel opened.
         module: ModuleId,
     },
-    /// A list row of a module's panel was selected.
+    /// A list row of a module's panel or popup was selected.
     ListSelect {
-        /// Module whose panel row was selected.
+        /// Module whose list row was selected.
         module: ModuleId,
         /// Row index, as published in the module's panel content.
         index: usize,
+        /// Surface the selection came from.
+        source: ListSource,
     },
+    /// A notification arrived from the notification bus.
+    Notification(Notification),
+    /// A notification was closed (expired, dismissed or replaced).
+    NotificationClosed(u32),
 }
 
 /// Errors produced while building or updating the kernel.
@@ -140,7 +146,9 @@ impl Shell {
             | Msg::Compositor(_)
             | Msg::Interaction { .. }
             | Msg::PanelOpened { .. }
-            | Msg::ListSelect { .. } => self.forward(&msg),
+            | Msg::ListSelect { .. }
+            | Msg::Notification(_)
+            | Msg::NotificationClosed(_) => self.forward(&msg),
         }
     }
 
@@ -170,6 +178,21 @@ impl Shell {
     #[must_use]
     pub fn panel_content(&self, module: &ModuleId) -> Option<crate::PanelContent> {
         self.modules.get(module).and_then(|module| module.panel())
+    }
+
+    /// Returns a module's popup content, when it wants one visible.
+    #[must_use]
+    pub fn popup_content(&self, module: &ModuleId) -> Option<crate::PanelContent> {
+        self.modules.get(module).and_then(|module| module.popup())
+    }
+
+    /// Returns every module that currently wants a popup visible.
+    #[must_use]
+    pub fn popup_modules(&self) -> Vec<(ModuleId, crate::PanelContent)> {
+        self.modules
+            .iter()
+            .filter_map(|(id, module)| module.popup().map(|content| (id.clone(), content)))
+            .collect()
     }
 
     fn apply_config(&mut self, config: Config) -> Effects {

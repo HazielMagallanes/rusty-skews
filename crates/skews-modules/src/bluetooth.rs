@@ -118,7 +118,7 @@ impl Module for Bluetooth {
             } if module == &self.id => {
                 vec![Effect::Action(Action::TogglePanel(self.id.clone()))]
             }
-            Msg::ListSelect { module, index } if module == &self.id => {
+            Msg::ListSelect { module, index, .. } if module == &self.id => {
                 if *index == 0 {
                     let powered = self.status.as_ref().is_some_and(|status| status.powered);
                     return vec![Effect::Action(Action::SetBluetooth(!powered))];
@@ -168,7 +168,7 @@ pub fn register(registry: &mut Registry) {
 mod tests {
     use super::Bluetooth;
     use skews_app::{Module, ModuleOutput, Msg, PanelContent};
-    use skews_core::{Action, Effect, InteractionKind, ModuleId};
+    use skews_core::{Action, Effect, InteractionKind, ListSource, ModuleId};
     use skews_services::bluetooth::{
         AdapterStatus, BluetoothDevice, BluetoothError, BluetoothSource,
     };
@@ -273,14 +273,16 @@ mod tests {
         assert_eq!(
             module.update(&Msg::ListSelect {
                 module: ModuleId::from("bluetooth"),
-                index: 0
+                index: 0,
+                source: ListSource::Panel,
             }),
             vec![Effect::Action(Action::SetBluetooth(false))]
         );
         assert_eq!(
             module.update(&Msg::ListSelect {
                 module: ModuleId::from("bluetooth"),
-                index: 1
+                index: 1,
+                source: ListSource::Panel,
             }),
             vec![Effect::Action(Action::DisconnectBluetooth(String::from(
                 "AA:BB"
@@ -289,7 +291,8 @@ mod tests {
         assert_eq!(
             module.update(&Msg::ListSelect {
                 module: ModuleId::from("bluetooth"),
-                index: 2
+                index: 2,
+                source: ListSource::Panel,
             }),
             vec![Effect::Action(Action::ConnectBluetooth(String::from(
                 "CC:DD"

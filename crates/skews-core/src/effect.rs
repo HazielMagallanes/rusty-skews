@@ -43,6 +43,8 @@ pub enum Action {
     ConnectBluetooth(String),
     /// Disconnect a Bluetooth device by address.
     DisconnectBluetooth(String),
+    /// Dismiss a notification by id.
+    DismissNotification(u32),
 }
 
 /// A side effect requested by the kernel.

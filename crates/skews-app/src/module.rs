@@ -69,4 +69,12 @@ pub trait Module: Send {
     fn panel(&self) -> Option<PanelContent> {
         None
     }
+
+    /// Returns the module's popup content (toast), when it has one.
+    ///
+    /// Returning `None` hides the popup; the runtime keeps popups in sync with
+    /// this method after every message.
+    fn popup(&self) -> Option<PanelContent> {
+        None
+    }
 }
