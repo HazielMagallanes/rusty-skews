@@ -15,6 +15,14 @@ versiones.
 
 ### Agregado
 
+* Slice de paneles de M2: superficies de panel desplegable con backdrop que
+  captura clics, cierre con Escape y con clic afuera; el módulo `volume` ahora
+  abre un panel al hacer clic (clic derecho silencia, scroll ajusta) con un
+  slider que fija el volumen al hacer clic.
+* Salidas de nivel tipadas (`ModuleOutput::Level { percent, muted }`) que
+  alimentan tanto el texto de la barra como el slider del panel; nuevas
+  acciones `SetVolume` y `TogglePanel`, más un tipo de interacción de clic
+  secundario.
 * Slice de entrada de M2: eventos de puntero (clic, scroll) sobre la barra con
   hit testing, enrutados a los módulos como interacciones tipadas; los módulos
   devuelven `Effect::Action` y el runtime lo ejecuta contra el servicio

@@ -88,6 +88,21 @@ pub fn adjust_volume(delta: f32) -> Result<(), AudioError> {
     run_wpctl(&["set-volume", "@DEFAULT_AUDIO_SINK@", &argument])
 }
 
+/// Sets the default sink volume to an absolute value.
+pub fn set_volume(volume: f32) -> Result<(), AudioError> {
+    run_wpctl(&[
+        "set-volume",
+        "@DEFAULT_AUDIO_SINK@",
+        &volume_argument(volume),
+    ])
+}
+
+/// Formats a clamped volume as a `wpctl` argument (`0.65`).
+#[must_use]
+pub fn volume_argument(volume: f32) -> String {
+    format!("{:.2}", clamp_volume(volume))
+}
+
 /// Toggles mute on the default sink.
 pub fn toggle_mute() -> Result<(), AudioError> {
     run_wpctl(&["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
@@ -146,5 +161,12 @@ mod tests {
         assert_eq!(clamp_volume(1.5), 1.0);
         assert_eq!(clamp_volume(-0.2), 0.0);
         assert_eq!(clamp_volume(0.4), 0.4);
+    }
+
+    #[test]
+    fn formats_volume_arguments() {
+        assert_eq!(super::volume_argument(0.654), "0.65");
+        assert_eq!(super::volume_argument(1.7), "1.00");
+        assert_eq!(super::volume_argument(-1.0), "0.00");
     }
 }

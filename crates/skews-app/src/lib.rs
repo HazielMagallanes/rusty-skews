@@ -52,7 +52,7 @@ pub enum ShellError {
 }
 
 /// A module placed in a bar region, with its current output.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModuleSlot {
     /// Module id as written in the configuration.
     pub id: ModuleId,
@@ -61,7 +61,7 @@ pub struct ModuleSlot {
 }
 
 /// The bar as composed by the kernel: regions in configuration order.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BarPlan {
     /// Bar height in pixels.
     pub height: u32,

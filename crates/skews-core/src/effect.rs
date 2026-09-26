@@ -4,6 +4,8 @@
 //! and return a list of side-effect descriptions that the runtime executes in
 //! order. This keeps behavior unit-testable without a display or event loop.
 
+use crate::ModuleId;
+
 /// Severity of a [`Effect::Log`] message.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum LogLevel {
@@ -25,8 +27,12 @@ pub enum LogLevel {
 pub enum Action {
     /// Adjust the default audio sink volume by a relative delta (`0.05` = +5 %).
     AdjustVolume(f32),
+    /// Set the default audio sink volume to an absolute value (`0.0..=1.0`).
+    SetVolume(f32),
     /// Toggle mute on the default audio sink.
     ToggleMute,
+    /// Toggle the dropdown panel of a module.
+    TogglePanel(ModuleId),
 }
 
 /// A side effect requested by the kernel.

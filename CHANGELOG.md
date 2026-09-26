@@ -15,6 +15,13 @@ ships releases.
 
 ### Added
 
+* M2 panel slice: dropdown panel surfaces with a click-catching backdrop,
+  Escape and click-outside dismissal; the `volume` module now opens a panel on
+  click (right-click mutes, scroll adjusts) with a slider that sets the volume
+  on click.
+* Typed level outputs (`ModuleOutput::Level { percent, muted }`) drive both the
+  bar text and the panel slider; new actions `SetVolume` and `TogglePanel`, plus
+  a secondary-click interaction kind.
 * M2 input slice: pointer events (click, scroll) on the bar with hit testing,
   routed to modules as typed interactions; modules return `Effect::Action` and
   the runtime executes it against the matching service.

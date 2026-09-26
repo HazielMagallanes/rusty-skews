@@ -5,6 +5,7 @@ use std::ffi::c_void;
 use std::ptr::NonNull;
 
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
+use smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard;
 use smithay_client_toolkit::reexports::client::protocol::wl_pointer::WlPointer;
 use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_seat, wl_surface};
 use smithay_client_toolkit::{
@@ -15,6 +16,7 @@ use smithay_client_toolkit::{
     registry_handlers,
     seat::{
         Capability, SeatHandler, SeatState,
+        keyboard::{KeyEvent, KeyboardHandler, Keysym},
         pointer::{AxisScroll, PointerEvent, PointerEventKind, PointerHandler},
     },
     shell::{
@@ -28,6 +30,9 @@ use smithay_client_toolkit::{
 
 use crate::error::WaylandError;
 use crate::{Connection, GlobalList, ObjectId, Proxy, QueueHandle};
+
+/// Vertical gap between the bar and a dropdown panel.
+pub const PANEL_GAP: i32 = 6;
 
 /// Options controlling bar surface creation.
 #[derive(Debug, Clone)]
@@ -44,6 +49,21 @@ impl BarOptions {
     fn matches(&self, output_name: Option<&str>) -> bool {
         self.monitor == "*" || output_name == Some(self.monitor.as_str())
     }
+}
+
+/// Options for a dropdown panel surface.
+#[derive(Debug, Clone)]
+pub struct PanelOptions {
+    /// Panel width in pixels.
+    pub width: u32,
+    /// Panel height in pixels.
+    pub height: u32,
+    /// Distance from the top edge (bar height plus a gap).
+    pub margin_top: i32,
+    /// Distance from the right edge.
+    pub margin_right: i32,
+    /// Layer-shell namespace.
+    pub namespace: String,
 }
 
 /// Events emitted by [`BarShell`] for the runtime to react to.
@@ -83,6 +103,25 @@ pub enum BarEvent {
         /// What the pointer did.
         kind: PointerKind,
     },
+    /// A panel (and its backdrop) was created.
+    PanelShown {
+        /// Panel surface object id.
+        id: ObjectId,
+        /// Backdrop surface object id (clicks on it dismiss the panel).
+        backdrop: ObjectId,
+        /// Output the panel is bound to.
+        output: Option<String>,
+    },
+    /// A panel was hidden.
+    PanelHidden {
+        /// Panel surface object id.
+        id: ObjectId,
+    },
+    /// A key was pressed while a shell surface had keyboard focus.
+    KeyPressed {
+        /// Raw keysym (`xkeysym` value).
+        keysym: u32,
+    },
 }
 
 /// Pointer interactions the runtime cares about.
@@ -111,9 +150,17 @@ pub enum PointerKind {
 
 struct SurfaceEntry {
     layer: LayerSurface,
-    #[allow(dead_code, reason = "kept for output hotplug handling in M1")]
     output: Option<wl_output::WlOutput>,
     scale: i32,
+}
+
+/// A dropdown panel plus its click-catching backdrop.
+struct PanelEntry {
+    layer: LayerSurface,
+    #[allow(dead_code, reason = "held so the backdrop surface stays mapped")]
+    backdrop: LayerSurface,
+    backdrop_id: ObjectId,
+    output_name: Option<String>,
 }
 
 /// Layer-surface state machine for the bar.
@@ -128,8 +175,12 @@ pub struct BarShell {
     layer_shell: LayerShell,
     options: BarOptions,
     surfaces: HashMap<ObjectId, SurfaceEntry>,
+    outputs: HashMap<String, wl_output::WlOutput>,
+    panels: HashMap<ObjectId, PanelEntry>,
     events: VecDeque<BarEvent>,
     pointer: Option<WlPointer>,
+    keyboard: Option<WlKeyboard>,
+    seats: Vec<wl_seat::WlSeat>,
 }
 
 impl BarShell {
@@ -158,8 +209,12 @@ impl BarShell {
             layer_shell,
             options,
             surfaces: HashMap::new(),
+            outputs: HashMap::new(),
+            panels: HashMap::new(),
             events: VecDeque::new(),
             pointer: None,
+            keyboard: None,
+            seats: Vec::new(),
         })
     }
 
@@ -179,12 +234,119 @@ impl BarShell {
             entry.layer.set_exclusive_zone(height as i32);
             entry.layer.commit();
         }
+        for entry in self.panels.values() {
+            entry.layer.set_margin(height as i32 + PANEL_GAP, 0, 0, 0);
+            entry.layer.commit();
+        }
     }
 
-    /// Returns the Wayland surface for a surface id.
+    /// Shows a dropdown panel (and its backdrop) on an output.
+    ///
+    /// Returns `(panel_id, backdrop_id)`. Only one panel is expected at a
+    /// time; callers hide the previous one first.
+    pub fn show_panel(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        output_name: Option<&str>,
+        options: &PanelOptions,
+    ) -> Option<(ObjectId, ObjectId)> {
+        let output = output_name
+            .and_then(|name| self.outputs.get(name))
+            .or_else(|| self.outputs.values().next())
+            .cloned()?;
+
+        // Backdrop first, so the panel stacks above it.
+        let backdrop_surface = self.compositor.create_surface(qh);
+        let backdrop = self.layer_shell.create_layer_surface(
+            qh,
+            backdrop_surface.clone(),
+            Layer::Overlay,
+            Some("rusty-skews-panel-backdrop"),
+            Some(&output),
+        );
+        backdrop.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        backdrop.set_exclusive_zone(0);
+        backdrop.set_keyboard_interactivity(KeyboardInteractivity::None);
+        backdrop.commit();
+        let backdrop_id = backdrop_surface.id();
+
+        let panel_surface = self.compositor.create_surface(qh);
+        let layer = self.layer_shell.create_layer_surface(
+            qh,
+            panel_surface.clone(),
+            Layer::Overlay,
+            Some(options.namespace.as_str()),
+            Some(&output),
+        );
+        layer.set_anchor(Anchor::TOP | Anchor::RIGHT);
+        layer.set_size(options.width, options.height);
+        layer.set_margin(options.margin_top, options.margin_right, 0, 0);
+        layer.set_exclusive_zone(0);
+        layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+        layer.commit();
+
+        let id = panel_surface.id();
+        self.panels.insert(
+            id.clone(),
+            PanelEntry {
+                layer,
+                backdrop,
+                backdrop_id: backdrop_id.clone(),
+                output_name: output_name.map(str::to_owned),
+            },
+        );
+
+        self.events.push_back(BarEvent::PanelShown {
+            id: id.clone(),
+            backdrop: backdrop_id.clone(),
+            output: output_name.map(str::to_owned),
+        });
+
+        Some((id, backdrop_id))
+    }
+
+    /// Hides a panel and its backdrop.
+    pub fn hide_panel(&mut self, id: &ObjectId) {
+        if self.panels.remove(id).is_some() {
+            self.events
+                .push_back(BarEvent::PanelHidden { id: id.clone() });
+        }
+    }
+
+    /// Returns the output name a surface belongs to.
+    #[must_use]
+    pub fn surface_output(&self, id: &ObjectId) -> Option<String> {
+        if let Some(entry) = self.surfaces.get(id) {
+            return entry
+                .output
+                .as_ref()
+                .and_then(|output| self.output_state.info(output))
+                .and_then(|info| info.name.clone());
+        }
+        self.panels
+            .get(id)
+            .and_then(|entry| entry.output_name.clone())
+    }
+
+    fn owns_surface(&self, id: &ObjectId) -> bool {
+        self.surfaces.contains_key(id)
+            || self.panels.contains_key(id)
+            || self.panels.values().any(|entry| entry.backdrop_id == *id)
+    }
+
+    /// Returns the Wayland surface for a surface id (bars, panels, backdrops).
     #[must_use]
     pub fn wl_surface(&self, id: &ObjectId) -> Option<&wl_surface::WlSurface> {
-        self.surfaces.get(id).map(|entry| entry.layer.wl_surface())
+        if let Some(entry) = self.surfaces.get(id) {
+            return Some(entry.layer.wl_surface());
+        }
+        if let Some(entry) = self.panels.get(id) {
+            return Some(entry.layer.wl_surface());
+        }
+        self.panels
+            .values()
+            .find(|entry| entry.backdrop_id == *id)
+            .map(|entry| entry.backdrop.wl_surface())
     }
 
     /// Returns the integer scale factor of the output a surface belongs to.
@@ -217,6 +379,9 @@ impl BarShell {
         layer.commit();
 
         let id = surface.id();
+        if let Some(name) = name.clone() {
+            self.outputs.insert(name, output.clone());
+        }
         self.surfaces.insert(
             id.clone(),
             SurfaceEntry {
@@ -253,7 +418,9 @@ impl SeatHandler for BarShell {
         &mut self.seat_state
     }
 
-    fn new_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {}
+    fn new_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, seat: wl_seat::WlSeat) {
+        self.seats.push(seat);
+    }
 
     fn new_capability(
         &mut self,
@@ -266,6 +433,12 @@ impl SeatHandler for BarShell {
             match self.seat_state.get_pointer(qh, &seat) {
                 Ok(pointer) => self.pointer = Some(pointer),
                 Err(error) => tracing::warn!(%error, "failed to create the pointer"),
+            }
+        }
+        if capability == Capability::Keyboard && self.keyboard.is_none() {
+            match self.seat_state.get_keyboard(qh, &seat, None) {
+                Ok(keyboard) => self.keyboard = Some(keyboard),
+                Err(error) => tracing::warn!(%error, "failed to create the keyboard"),
             }
         }
     }
@@ -282,9 +455,96 @@ impl SeatHandler for BarShell {
         {
             pointer.release();
         }
+        if capability == Capability::Keyboard
+            && let Some(keyboard) = self.keyboard.take()
+        {
+            keyboard.release();
+        }
     }
 
     fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {
+    }
+}
+
+impl KeyboardHandler for BarShell {
+    fn enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        _surface: &wl_surface::WlSurface,
+        _serial: u32,
+        _raw: &[u32],
+        _keysyms: &[Keysym],
+    ) {
+    }
+
+    fn leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        _surface: &wl_surface::WlSurface,
+        _serial: u32,
+    ) {
+    }
+
+    fn press_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        _serial: u32,
+        event: KeyEvent,
+    ) {
+        self.events.push_back(BarEvent::KeyPressed {
+            keysym: event.keysym.raw(),
+        });
+    }
+
+    fn release_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        _serial: u32,
+        _event: KeyEvent,
+    ) {
+    }
+
+    fn repeat_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        _serial: u32,
+        event: KeyEvent,
+    ) {
+        // Treat key repeat like a fresh press (text editing uses it).
+        self.events.push_back(BarEvent::KeyPressed {
+            keysym: event.keysym.raw(),
+        });
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        _serial: u32,
+        _modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
+        _raw_modifiers: smithay_client_toolkit::seat::keyboard::RawModifiers,
+        _layout: u32,
+    ) {
+    }
+
+    fn update_repeat_info(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        _info: smithay_client_toolkit::seat::keyboard::RepeatInfo,
+    ) {
     }
 }
 
@@ -298,7 +558,7 @@ impl PointerHandler for BarShell {
     ) {
         for event in events {
             let id = event.surface.id();
-            if !self.surfaces.contains_key(&id) {
+            if !self.owns_surface(&id) {
                 continue;
             }
 
@@ -384,6 +644,22 @@ impl OutputHandler for BarShell {
         for surface_id in surface_ids {
             self.remove_surface(surface_id);
         }
+
+        let panel_ids: Vec<ObjectId> = self
+            .panels
+            .iter()
+            .filter(|(_, entry)| {
+                entry
+                    .output_name
+                    .as_ref()
+                    .and_then(|name| self.outputs.get(name))
+                    .is_some_and(|stored| stored.id() == id)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for panel_id in panel_ids {
+            self.hide_panel(&panel_id);
+        }
     }
 }
 
@@ -440,6 +716,12 @@ impl CompositorHandler for BarShell {
 impl LayerShellHandler for BarShell {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
         let id = layer.wl_surface().id();
+
+        if let Some(entry) = self.panels.remove(&id) {
+            let _ = entry;
+            self.events.push_back(BarEvent::PanelHidden { id });
+            return;
+        }
         self.remove_surface(id);
     }
 

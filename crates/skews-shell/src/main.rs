@@ -21,9 +21,10 @@ use skews_layout::{BarLayoutOptions, TextMetrics};
 use skews_render::{GpuSurface, Renderer};
 use skews_text::TextEngine;
 use skews_theme::{Tokens, default_palette_path};
+use skews_ui::{DrawItem, Scene};
 use skews_wayland::{
-    BarEvent, BarOptions, BarShell, Connection, EventQueue, ObjectId, PointerKind, display_handle,
-    registry_queue_init, window_handle,
+    BarEvent, BarOptions, BarShell, Connection, EventQueue, Keysym, ObjectId, PANEL_GAP,
+    PanelOptions, PointerKind, QueueHandle, display_handle, registry_queue_init, window_handle,
 };
 use tracing::{debug, error, info, warn};
 
@@ -46,6 +47,10 @@ struct Args {
     /// Development helper: exit successfully after N seconds.
     #[arg(long, value_name = "SECONDS", hide = true)]
     exit_after: Option<u64>,
+
+    /// Development helper: open a module's panel after the first frame.
+    #[arg(long, value_name = "MODULE", hide = true)]
+    show_panel: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -78,6 +83,20 @@ fn init_tracing(verbosity: u8) {
 /// redraws and idle CPU.
 const TICK_INTERVAL: Duration = Duration::from_secs(2);
 
+/// Volume panel dimensions.
+const PANEL_WIDTH: u32 = 280;
+const PANEL_HEIGHT: u32 = 104;
+/// Distance from the right edge for dropdown panels.
+const PANEL_MARGIN_RIGHT: i32 = 12;
+/// Panel corner radius.
+const PANEL_RADIUS: f32 = 12.0;
+/// Slider geometry inside the panel.
+const SLIDER_X: f32 = 18.0;
+const SLIDER_Y: f32 = 62.0;
+const SLIDER_HEIGHT: f32 = 6.0;
+/// Extra vertical hit area around the slider.
+const SLIDER_HIT_PADDING: f32 = 10.0;
+
 /// Per-surface GPU state.
 struct SurfaceState {
     gpu: GpuSurface,
@@ -94,6 +113,35 @@ struct HitRegion {
     width: f32,
 }
 
+/// A rectangular interactive region inside a panel.
+#[derive(Debug, Clone, Copy)]
+struct RectRegion {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+impl RectRegion {
+    fn contains(&self, x: f32, y: f32) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
+}
+
+/// What a mapped surface is used for.
+#[derive(Debug, Clone)]
+enum SurfaceKind {
+    /// A bar strip on an output.
+    Bar,
+    /// A dropdown panel belonging to a module.
+    Panel {
+        module: ModuleId,
+        backdrop: ObjectId,
+    },
+    /// The click-catching backdrop of a panel.
+    Backdrop { panel: ObjectId },
+}
+
 /// Runtime state shared by the calloop sources.
 struct Runtime {
     shell: Shell,
@@ -101,13 +149,19 @@ struct Runtime {
     text_engine: TextEngine,
     instance: wgpu::Instance,
     renderer: Option<Renderer>,
+    qh: QueueHandle<BarShell>,
     surfaces: HashMap<ObjectId, SurfaceState>,
+    kinds: HashMap<ObjectId, SurfaceKind>,
     hits: HashMap<ObjectId, Vec<HitRegion>>,
+    panel_regions: HashMap<ModuleId, Vec<RectRegion>>,
+    panels: HashMap<ObjectId, ModuleId>,
+    last_output: Option<String>,
+    pending_interaction: Option<(ModuleId, InteractionKind)>,
     actions_executed: bool,
 }
 
 impl Runtime {
-    fn new(shell: Shell, theme: Tokens) -> Self {
+    fn new(shell: Shell, theme: Tokens, qh: QueueHandle<BarShell>) -> Self {
         let text_engine = TextEngine::new(theme.font_family.clone());
         let instance = create_instance();
 
@@ -117,8 +171,14 @@ impl Runtime {
             text_engine,
             instance,
             renderer: None,
+            qh,
             surfaces: HashMap::new(),
+            kinds: HashMap::new(),
             hits: HashMap::new(),
+            panel_regions: HashMap::new(),
+            panels: HashMap::new(),
+            last_output: None,
+            pending_interaction: None,
             actions_executed: false,
         }
     }
@@ -134,14 +194,14 @@ impl Runtime {
             info!(height, "bar height changed; surfaces will reconfigure");
         }
 
-        let mut redraw = self.apply(effects);
+        let mut redraw = self.apply(effects, bar);
 
-        // Actions change state outside the kernel (volume, mute); refresh the
-        // modules right away instead of waiting for the next tick.
+        // Actions change state outside the kernel (volume, mute, panels);
+        // refresh the modules right away instead of waiting for the next tick.
         if self.actions_executed {
             self.actions_executed = false;
             let refresh = self.shell.update(Msg::Tick { unix_ms: unix_ms() });
-            redraw |= self.apply(refresh);
+            redraw |= self.apply(refresh, bar);
         }
 
         if redraw {
@@ -150,7 +210,7 @@ impl Runtime {
     }
 
     /// Executes effects; returns `true` when a redraw is needed.
-    fn apply(&mut self, effects: Effects) -> bool {
+    fn apply(&mut self, effects: Effects, bar: &mut BarShell) -> bool {
         let mut redraw = false;
 
         for effect in effects {
@@ -158,7 +218,7 @@ impl Runtime {
                 Effect::Log { level, message } => log_effect(level, &message),
                 Effect::Redraw => redraw = true,
                 Effect::Action(action) => {
-                    self.execute(action);
+                    self.execute(action, bar);
                     self.actions_executed = true;
                 }
             }
@@ -167,14 +227,78 @@ impl Runtime {
         redraw
     }
 
-    fn execute(&self, action: Action) {
-        let result = match action {
-            Action::AdjustVolume(delta) => skews_services::audio::adjust_volume(delta),
-            Action::ToggleMute => skews_services::audio::toggle_mute(),
+    fn execute(&mut self, action: Action, bar: &mut BarShell) {
+        match action {
+            Action::AdjustVolume(delta) => self.audio("adjust volume", |_| {
+                skews_services::audio::adjust_volume(delta)
+            }),
+            Action::SetVolume(volume) => {
+                self.audio("set volume", |_| skews_services::audio::set_volume(volume))
+            }
+            Action::ToggleMute => {
+                self.audio("toggle mute", |_| skews_services::audio::toggle_mute());
+            }
+            Action::TogglePanel(module) => {
+                let output = self.last_output.clone();
+                self.toggle_panel(&module, output.as_deref(), bar);
+            }
+        }
+    }
+
+    fn audio(
+        &self,
+        what: &str,
+        run: impl FnOnce(()) -> Result<(), skews_services::audio::AudioError>,
+    ) {
+        if let Err(error) = run(()) {
+            warn!(%error, action = what, "audio action failed");
+        }
+    }
+
+    /// Shows or hides the panel of a module.
+    fn toggle_panel(&mut self, module: &ModuleId, output: Option<&str>, bar: &mut BarShell) {
+        // Toggle off when this module's panel is open.
+        if let Some((id, _)) = self.panels.iter().find(|(_, open)| *open == module) {
+            let id = id.clone();
+            bar.hide_panel(&id);
+            return;
+        }
+
+        // Single-panel policy: close anything else first.
+        let open: Vec<ObjectId> = self.panels.keys().cloned().collect();
+        for id in open {
+            bar.hide_panel(&id);
+        }
+
+        let options = PanelOptions {
+            width: PANEL_WIDTH,
+            height: PANEL_HEIGHT,
+            margin_top: self.shell.state().bar.height as i32 + PANEL_GAP,
+            margin_right: PANEL_MARGIN_RIGHT,
+            namespace: format!("rusty-skews-panel-{module}"),
         };
 
-        if let Err(error) = result {
-            warn!(%error, "audio action failed");
+        match bar.show_panel(&self.qh, output, &options) {
+            Some((id, backdrop)) => {
+                self.kinds.insert(
+                    id.clone(),
+                    SurfaceKind::Panel {
+                        module: module.clone(),
+                        backdrop: backdrop.clone(),
+                    },
+                );
+                self.kinds
+                    .insert(backdrop, SurfaceKind::Backdrop { panel: id.clone() });
+                self.panels.insert(id, module.clone());
+            }
+            None => warn!(module = %module, "no output available for the panel"),
+        }
+    }
+
+    fn hide_panels(&mut self, bar: &mut BarShell) {
+        let open: Vec<ObjectId> = self.panels.keys().cloned().collect();
+        for id in open {
+            bar.hide_panel(&id);
         }
     }
 
@@ -192,18 +316,47 @@ impl Runtime {
                     }
                 }
                 BarEvent::Closed { id } => {
-                    self.surfaces.remove(&id);
-                    self.hits.remove(&id);
-                    info!(surface = ?id, "bar surface closed");
+                    self.close_surface(&id);
                 }
                 BarEvent::Pointer { id, position, kind } => {
                     self.on_pointer(bar, &id, position, kind);
+                }
+                BarEvent::PanelShown { id, output, .. } => {
+                    info!(panel = ?id, ?output, "panel shown");
+                }
+                BarEvent::PanelHidden { id } => {
+                    info!(panel = ?id, "panel hidden");
+                    self.close_surface(&id);
+                }
+                BarEvent::KeyPressed { keysym } => {
+                    if keysym == Keysym::Escape.raw() {
+                        self.hide_panels(bar);
+                    }
                 }
             }
         }
     }
 
-    /// Routes pointer input to the module under the cursor.
+    /// Drops every runtime trace of a closed surface.
+    fn close_surface(&mut self, id: &ObjectId) {
+        self.surfaces.remove(id);
+        self.hits.remove(id);
+
+        match self.kinds.remove(id) {
+            Some(SurfaceKind::Panel { module, backdrop }) => {
+                self.panel_regions.remove(&module);
+                self.panels.remove(id);
+                self.kinds.remove(&backdrop);
+            }
+            Some(SurfaceKind::Backdrop { panel }) => {
+                self.panels.remove(&panel);
+                self.kinds.remove(&panel);
+            }
+            _ => {}
+        }
+    }
+
+    /// Routes pointer input to the module or panel under the cursor.
     fn on_pointer(
         &mut self,
         bar: &mut BarShell,
@@ -212,6 +365,23 @@ impl Runtime {
         kind: PointerKind,
     ) {
         let x = position.0 as f32;
+        let y = position.1 as f32;
+
+        match self.kinds.get(id).cloned() {
+            Some(SurfaceKind::Backdrop { panel }) => {
+                // Any press on the backdrop dismisses the panel.
+                if matches!(kind, PointerKind::Press { .. }) {
+                    bar.hide_panel(&panel);
+                }
+                return;
+            }
+            Some(SurfaceKind::Panel { module, .. }) => {
+                self.on_panel_pointer(bar, &module, x, y, kind);
+                return;
+            }
+            _ => {}
+        }
+
         let Some(module) = self.hits.get(id).and_then(|hits| {
             hits.iter()
                 .find(|hit| x >= hit.x && x < hit.x + hit.width)
@@ -220,22 +390,59 @@ impl Runtime {
             return;
         };
 
-        let interaction = match kind {
-            // Linux button code 0x110 is the left mouse button.
-            PointerKind::Press { button: 0x110 } => Some(InteractionKind::Click),
-            PointerKind::Scroll { vertical, .. } if vertical > 0.0 => {
-                Some(InteractionKind::ScrollUp)
-            }
-            PointerKind::Scroll { vertical, .. } if vertical < 0.0 => {
-                Some(InteractionKind::ScrollDown)
-            }
-            _ => None,
-        };
-
+        let interaction = interaction_from_pointer(kind);
         if let Some(kind) = interaction {
+            self.last_output = bar.surface_output(id).or(self.last_output.clone());
             debug!(module = %module, ?kind, "module interaction");
             self.dispatch(Msg::Interaction { module, kind }, bar);
         }
+    }
+
+    /// Handles clicks and scrolls inside a panel.
+    fn on_panel_pointer(
+        &mut self,
+        bar: &mut BarShell,
+        module: &ModuleId,
+        x: f32,
+        y: f32,
+        kind: PointerKind,
+    ) {
+        match kind {
+            PointerKind::Press { button: 0x110 } => {
+                let Some(regions) = self.panel_regions.get(module).cloned() else {
+                    return;
+                };
+                let Some(region) = regions.iter().find(|region| region.contains(x, y)) else {
+                    return;
+                };
+
+                let fraction = ((x - region.x) / region.width).clamp(0.0, 1.0);
+                self.execute(Action::SetVolume(fraction), bar);
+                self.refresh_after_action(bar);
+            }
+            PointerKind::Scroll { vertical, .. } if vertical != 0.0 => {
+                let interaction = if vertical > 0.0 {
+                    InteractionKind::ScrollUp
+                } else {
+                    InteractionKind::ScrollDown
+                };
+                self.dispatch(
+                    Msg::Interaction {
+                        module: module.clone(),
+                        kind: interaction,
+                    },
+                    bar,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    /// Refreshes modules and re-renders after an out-of-band change.
+    fn refresh_after_action(&mut self, bar: &mut BarShell) {
+        let refresh = self.shell.update(Msg::Tick { unix_ms: unix_ms() });
+        let _ = self.apply(refresh, bar);
+        self.render_all();
     }
 
     fn on_configured(
@@ -280,16 +487,30 @@ impl Runtime {
         }
 
         self.render_surface(id)
-            .context("failed to render the bar")?;
+            .context("failed to render the surface")?;
 
-        info!(surface = ?id, width, height, "bar configured");
-        let plan = self.shell.bar_plan();
-        info!(
-            left = %describe(&plan.left),
-            center = %describe(&plan.center),
-            right = %describe(&plan.right),
-            "bar plan"
-        );
+        match self.kinds.get(id).cloned() {
+            Some(SurfaceKind::Panel { module, .. }) => {
+                info!(panel = ?id, module = %module, width, height, "panel configured");
+            }
+            _ => {
+                self.kinds.entry(id.clone()).or_insert(SurfaceKind::Bar);
+                info!(surface = ?id, width, height, "bar configured");
+                let plan = self.shell.bar_plan();
+                info!(
+                    left = %describe(&plan.left),
+                    center = %describe(&plan.center),
+                    right = %describe(&plan.right),
+                    "bar plan"
+                );
+
+                // Development helper: fire one interaction after the first frame.
+                if let Some((module, kind)) = self.pending_interaction.take() {
+                    info!(module = %module, ?kind, "dispatching pending interaction");
+                    self.dispatch(Msg::Interaction { module, kind }, bar);
+                }
+            }
+        }
 
         Ok(())
     }
@@ -304,6 +525,46 @@ impl Runtime {
     }
 
     fn render_surface(&mut self, id: &ObjectId) -> Result<()> {
+        let Some(state) = self.surfaces.get(id) else {
+            return Ok(());
+        };
+        let (width, height) = (state.width, state.height);
+        let kind = self.kinds.get(id).cloned().unwrap_or(SurfaceKind::Bar);
+        let is_bar = matches!(kind, SurfaceKind::Bar);
+
+        // Build the scene first: it may borrow the text engine mutably.
+        let (scene, hits, panel_regions) = match kind {
+            SurfaceKind::Panel { module, .. } => {
+                let (scene, regions) = self.build_panel_scene(&module, width, height);
+                (scene, Vec::new(), Some((module, regions)))
+            }
+            SurfaceKind::Backdrop { .. } => (
+                Scene {
+                    background: skews_core::Rgba::TRANSPARENT,
+                    items: Vec::new(),
+                },
+                Vec::new(),
+                None,
+            ),
+            SurfaceKind::Bar => {
+                let (scene, hits) = build_scene(
+                    &self.shell,
+                    &mut self.text_engine,
+                    &self.theme,
+                    width,
+                    height,
+                )?;
+                (scene, hits, None)
+            }
+        };
+
+        if let Some((module, regions)) = panel_regions {
+            self.panel_regions.insert(module, regions);
+        }
+        if is_bar {
+            self.hits.insert(id.clone(), hits);
+        }
+
         let Some(renderer) = self.renderer.as_mut() else {
             return Ok(());
         };
@@ -321,20 +582,111 @@ impl Runtime {
             state.configured = Some(size);
         }
 
-        let (scene, hits) = build_scene(
-            &self.shell,
-            &mut self.text_engine,
-            &self.theme,
-            state.width,
-            state.height,
-        )?;
-        self.hits.insert(id.clone(), hits);
-
         renderer
             .render_scene(&mut state.gpu, &scene, &mut self.text_engine)
             .context("failed to render the scene")?;
 
         Ok(())
+    }
+
+    /// Builds the scene and interactive regions of a module's panel.
+    fn build_panel_scene(
+        &mut self,
+        module: &ModuleId,
+        width: u32,
+        height: u32,
+    ) -> (Scene, Vec<RectRegion>) {
+        const TITLE_SIZE: f32 = 11.0;
+        const VALUE_SIZE: f32 = 13.0;
+
+        let level = self.module_level(module);
+        let (percent, muted) = level.unwrap_or((0.0, false));
+
+        let track_width = width as f32 - SLIDER_X * 2.0;
+        let fill_width = track_width * (percent / 100.0).clamp(0.0, 1.0);
+
+        let value_text = if muted {
+            String::from("MUTED")
+        } else {
+            format!("{}%", percent.round() as i32)
+        };
+        let value_width = self.text_engine.measure(&value_text, VALUE_SIZE).width;
+
+        let accent = if muted {
+            self.theme.error
+        } else {
+            self.theme.primary
+        };
+
+        let scene = Scene {
+            background: skews_core::Rgba::TRANSPARENT,
+            items: vec![
+                DrawItem::Rect {
+                    rect: skews_core::Rect::new(0, 0, width, height),
+                    color: self.theme.surface_container.with_alpha(0.96),
+                    radius: PANEL_RADIUS,
+                },
+                DrawItem::Text {
+                    text: String::from("Volume"),
+                    x: SLIDER_X as i32,
+                    y: 14,
+                    size: TITLE_SIZE,
+                    color: self.theme.on_surface.with_alpha(0.7),
+                },
+                DrawItem::Text {
+                    text: value_text,
+                    x: (width as f32 - SLIDER_X - value_width).round() as i32,
+                    y: 12,
+                    size: VALUE_SIZE,
+                    color: self.theme.on_surface,
+                },
+                DrawItem::Rect {
+                    rect: skews_core::Rect::new(
+                        SLIDER_X as i32,
+                        SLIDER_Y as i32,
+                        track_width.round() as u32,
+                        SLIDER_HEIGHT as u32,
+                    ),
+                    color: self.theme.on_surface.with_alpha(0.25),
+                    radius: SLIDER_HEIGHT / 2.0,
+                },
+                DrawItem::Rect {
+                    rect: skews_core::Rect::new(
+                        SLIDER_X as i32,
+                        SLIDER_Y as i32,
+                        fill_width.round() as u32,
+                        SLIDER_HEIGHT as u32,
+                    ),
+                    color: accent,
+                    radius: SLIDER_HEIGHT / 2.0,
+                },
+            ],
+        };
+
+        let regions = vec![RectRegion {
+            x: SLIDER_X,
+            y: SLIDER_Y - SLIDER_HIT_PADDING,
+            width: track_width,
+            height: SLIDER_HEIGHT + SLIDER_HIT_PADDING * 2.0,
+        }];
+
+        (scene, regions)
+    }
+
+    /// Returns a module's level output, when it publishes one.
+    fn module_level(&self, module: &ModuleId) -> Option<(f32, bool)> {
+        let plan = self.shell.bar_plan();
+        let slots = [plan.left, plan.center, plan.right].concat();
+
+        slots.iter().find_map(|slot| {
+            if &slot.id != module {
+                return None;
+            }
+            match &slot.output {
+                ModuleOutput::Level { percent, muted } => Some((*percent, *muted)),
+                _ => None,
+            }
+        })
     }
 }
 
@@ -381,7 +733,12 @@ fn run(args: &Args) -> Result<()> {
     let mut event_loop: EventLoop<BarShell> =
         EventLoop::try_new().context("failed to create the event loop")?;
     let handle = event_loop.handle();
-    let runtime = Rc::new(RefCell::new(Runtime::new(shell, theme)));
+    let runtime = Rc::new(RefCell::new(Runtime::new(shell, theme, qh.clone())));
+
+    if let Some(module) = &args.show_panel {
+        runtime.borrow_mut().pending_interaction =
+            Some((ModuleId::from(module.as_str()), InteractionKind::Click));
+    }
 
     // Seed modules with their first values.
     runtime
@@ -583,6 +940,18 @@ fn log_effect(level: LogLevel, message: &str) {
     }
 }
 
+/// Maps a pointer event to a module interaction, when it is one.
+fn interaction_from_pointer(kind: PointerKind) -> Option<InteractionKind> {
+    match kind {
+        // Linux button codes: 0x110 = left, 0x111 = right.
+        PointerKind::Press { button: 0x110 } => Some(InteractionKind::Click),
+        PointerKind::Press { button: 0x111 } => Some(InteractionKind::SecondaryClick),
+        PointerKind::Scroll { vertical, .. } if vertical > 0.0 => Some(InteractionKind::ScrollUp),
+        PointerKind::Scroll { vertical, .. } if vertical < 0.0 => Some(InteractionKind::ScrollDown),
+        _ => None,
+    }
+}
+
 /// Builds the bar scene from the kernel plan, the layout pass and the theme.
 fn build_scene(
     shell: &Shell,
@@ -604,6 +973,18 @@ fn build_scene(
                     Some((
                         slot.id.clone(),
                         text.clone(),
+                        TextMetrics {
+                            width: shaped.width,
+                            height: shaped.height,
+                        },
+                    ))
+                }
+                ModuleOutput::Level { percent, muted } => {
+                    let text = level_text(*percent, *muted);
+                    let shaped = text_engine.measure(&text, TEXT_SIZE);
+                    Some((
+                        slot.id.clone(),
+                        text,
                         TextMetrics {
                             width: shaped.width,
                             height: shaped.height,
@@ -662,6 +1043,15 @@ fn build_scene(
     ))
 }
 
+/// Renders a level output as bar text.
+fn level_text(percent: f32, muted: bool) -> String {
+    if muted {
+        String::from("MUTED")
+    } else {
+        format!("{}%", percent.round() as i32)
+    }
+}
+
 /// Human-readable description of a bar region's module slots.
 fn describe(slots: &[ModuleSlot]) -> String {
     if slots.is_empty() {
@@ -673,6 +1063,9 @@ fn describe(slots: &[ModuleSlot]) -> String {
         .map(|slot| match &slot.output {
             ModuleOutput::Empty => format!("{}:empty", slot.id),
             ModuleOutput::Text(text) => format!("{}={text}", slot.id),
+            ModuleOutput::Level { percent, muted } => {
+                format!("{}={}", slot.id, level_text(*percent, *muted))
+            }
         })
         .collect::<Vec<_>>()
         .join(" ")
