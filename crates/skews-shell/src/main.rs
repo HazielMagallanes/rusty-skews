@@ -155,6 +155,7 @@ struct Runtime {
     renderer: Option<Renderer>,
     qh: QueueHandle<BarShell>,
     network: std::sync::Arc<dyn skews_services::network::NetworkSource>,
+    bluetooth: std::sync::Arc<dyn skews_services::bluetooth::BluetoothSource>,
     surfaces: HashMap<ObjectId, SurfaceState>,
     kinds: HashMap<ObjectId, SurfaceKind>,
     hits: HashMap<ObjectId, Vec<HitRegion>>,
@@ -178,6 +179,7 @@ impl Runtime {
             renderer: None,
             qh,
             network: std::sync::Arc::new(skews_services::network::NetworkManager),
+            bluetooth: std::sync::Arc::new(skews_services::bluetooth::Bluez),
             surfaces: HashMap::new(),
             kinds: HashMap::new(),
             hits: HashMap::new(),
@@ -256,6 +258,21 @@ impl Runtime {
             Action::ConnectWifi(ssid) => {
                 if let Err(error) = self.network.connect(&ssid) {
                     warn!(%error, %ssid, "failed to connect");
+                }
+            }
+            Action::SetBluetooth(enabled) => {
+                if let Err(error) = self.bluetooth.set_powered(enabled) {
+                    warn!(%error, "failed to toggle Bluetooth");
+                }
+            }
+            Action::ConnectBluetooth(address) => {
+                if let Err(error) = self.bluetooth.connect(&address) {
+                    warn!(%error, %address, "failed to connect Bluetooth device");
+                }
+            }
+            Action::DisconnectBluetooth(address) => {
+                if let Err(error) = self.bluetooth.disconnect(&address) {
+                    warn!(%error, %address, "failed to disconnect Bluetooth device");
                 }
             }
         }

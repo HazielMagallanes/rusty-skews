@@ -15,6 +15,12 @@ ships releases.
 
 ### Added
 
+* M2 Bluetooth slice: BlueZ over D-Bus (ObjectManager enumeration + typed
+  property reads), a `bluetooth` module showing `bt off`/`bt on` or the
+  connected device on the bar, and a device list panel (adapter toggle plus
+  connect/disconnect rows). New actions `SetBluetooth`, `ConnectBluetooth` and
+  `DisconnectBluetooth`; defaults and config examples now list `network` and
+  `bluetooth`.
 * M2 network slice: Wi-Fi status and control through NetworkManager's D-Bus
   API (typed zbus blocking proxies, no CLI parsing), a `network` module showing
   the active SSID on the bar, and a selectable list panel (Wi-Fi toggle row +

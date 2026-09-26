@@ -7,4 +7,5 @@
 #![forbid(unsafe_code)]
 
 pub mod audio;
+pub mod bluetooth;
 pub mod network;
