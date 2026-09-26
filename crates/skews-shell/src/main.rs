@@ -15,10 +15,11 @@ use clap::Parser;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use skews_app::{ListItem, ModuleOutput, ModuleSlot, Msg, PanelContent, Shell};
 use skews_config::{Config, default_config_path};
-use skews_core::{Action, Effect, Effects, InteractionKind, LogLevel, ModuleId};
+use skews_core::{Action, Effect, Effects, InteractionKind, ListSource, LogLevel, ModuleId};
 use skews_ipc_hyprland::{HyprEvent, active_workspace, event_socket_path, spawn_event_listener};
 use skews_layout::{BarLayoutOptions, TextMetrics};
 use skews_render::{GpuSurface, Renderer};
+use skews_services::notifications::{NotificationEvent, NotificationServer};
 use skews_text::TextEngine;
 use skews_theme::{Tokens, default_palette_path};
 use skews_ui::{DrawItem, Scene};
@@ -86,6 +87,8 @@ const TICK_INTERVAL: Duration = Duration::from_secs(2);
 /// Volume panel dimensions.
 const PANEL_WIDTH: u32 = 280;
 const PANEL_HEIGHT: u32 = 104;
+/// Notification popup width.
+const NOTIFICATION_WIDTH: u32 = 340;
 /// List panel metrics.
 const PANEL_LIST_HEADER: u32 = 42;
 const PANEL_ROW_HEIGHT: u32 = 26;
@@ -142,6 +145,8 @@ enum SurfaceKind {
         module: ModuleId,
         backdrop: ObjectId,
     },
+    /// A popup (notification toast) belonging to a module.
+    Popup { module: ModuleId },
     /// The click-catching backdrop of a panel.
     Backdrop { panel: ObjectId },
 }
@@ -161,6 +166,10 @@ struct Runtime {
     hits: HashMap<ObjectId, Vec<HitRegion>>,
     panel_regions: HashMap<ModuleId, Vec<RectRegion>>,
     panels: HashMap<ObjectId, ModuleId>,
+    popup: Option<ObjectId>,
+    popup_size: (u32, u32),
+    notifications: Option<std::sync::Arc<NotificationServer>>,
+    deadlines: HashMap<u32, std::time::Instant>,
     last_output: Option<String>,
     pending_interaction: Option<(ModuleId, InteractionKind)>,
     actions_executed: bool,
@@ -185,6 +194,10 @@ impl Runtime {
             hits: HashMap::new(),
             panel_regions: HashMap::new(),
             panels: HashMap::new(),
+            popup: None,
+            popup_size: (0, 0),
+            notifications: None,
+            deadlines: HashMap::new(),
             last_output: None,
             pending_interaction: None,
             actions_executed: false,
@@ -194,7 +207,26 @@ impl Runtime {
     /// Applies a kernel message, updates the bar if needed and renders.
     fn dispatch(&mut self, msg: Msg, bar: &mut BarShell) {
         let previous_height = self.shell.state().bar.height;
-        let effects = self.shell.update(msg);
+
+        // Notifications schedule their own expiry.
+        if let Msg::Notification(notification) = &msg {
+            let timeout = match notification.timeout_ms {
+                t if t > 0 => std::time::Duration::from_millis(t as u64),
+                // 0 means "never"; negative means "server default".
+                0 => std::time::Duration::from_secs(3600),
+                _ => std::time::Duration::from_millis(8000),
+            };
+            self.deadlines
+                .insert(notification.id, std::time::Instant::now() + timeout);
+        }
+
+        let is_tick = matches!(msg, Msg::Tick { .. });
+        let mut effects = self.shell.update(msg);
+
+        if is_tick {
+            effects.extend(self.expire_notifications());
+        }
+
         let height = self.shell.state().bar.height;
 
         if height != previous_height {
@@ -212,8 +244,80 @@ impl Runtime {
             redraw |= self.apply(refresh, bar);
         }
 
+        self.sync_popup(bar);
         if redraw {
             self.render_all();
+        }
+    }
+
+    /// Closes notifications whose deadline passed.
+    fn expire_notifications(&mut self) -> Effects {
+        let now = std::time::Instant::now();
+        let expired: Vec<u32> = self
+            .deadlines
+            .iter()
+            .filter(|(_, deadline)| **deadline <= now)
+            .map(|(id, _)| *id)
+            .collect();
+
+        let mut effects = Vec::new();
+        for id in expired {
+            self.deadlines.remove(&id);
+            if let Some(server) = &self.notifications
+                && let Err(error) = server.close(id)
+            {
+                warn!(%error, id, "failed to close notification");
+            }
+            effects.extend(self.shell.update(Msg::NotificationClosed(id)));
+        }
+
+        effects
+    }
+
+    /// Keeps the popup surface in sync with the module that wants one.
+    fn sync_popup(&mut self, bar: &mut BarShell) {
+        let popups = self.shell.popup_modules();
+
+        match (popups.first(), self.popup.clone()) {
+            (Some((module, content)), None) => {
+                let size = popup_size(content);
+                let options = PanelOptions {
+                    width: NOTIFICATION_WIDTH,
+                    height: size,
+                    margin_top: self.shell.state().bar.height as i32 + PANEL_GAP,
+                    margin_right: PANEL_MARGIN_RIGHT,
+                    namespace: String::from("rusty-skews-notification"),
+                };
+
+                match bar.show_popup(&self.qh, self.last_output.as_deref(), &options) {
+                    Some(id) => {
+                        self.kinds.insert(
+                            id.clone(),
+                            SurfaceKind::Popup {
+                                module: module.clone(),
+                            },
+                        );
+                        self.popup = Some(id);
+                        self.popup_size = (NOTIFICATION_WIDTH, size);
+                    }
+                    None => warn!("no output available for the notification popup"),
+                }
+            }
+            (Some((_, content)), Some(id)) => {
+                let size = popup_size(content);
+                if self.popup_size.1 != size {
+                    // Height changed: recreate the popup with the new size.
+                    bar.hide_popup(&id);
+                    self.popup = None;
+                    self.popup_size = (NOTIFICATION_WIDTH, size);
+                    self.sync_popup(bar);
+                }
+            }
+            (None, Some(id)) => {
+                bar.hide_popup(&id);
+                self.popup = None;
+            }
+            (None, None) => {}
         }
     }
 
@@ -274,6 +378,16 @@ impl Runtime {
                 if let Err(error) = self.bluetooth.disconnect(&address) {
                     warn!(%error, %address, "failed to disconnect Bluetooth device");
                 }
+            }
+            Action::DismissNotification(id) => {
+                if let Some(server) = &self.notifications
+                    && let Err(error) = server.close(id)
+                {
+                    warn!(%error, id, "failed to close notification");
+                }
+                self.deadlines.remove(&id);
+                let effects = self.shell.update(Msg::NotificationClosed(id));
+                let _ = self.apply(effects, bar);
             }
         }
     }
@@ -380,6 +494,16 @@ impl Runtime {
                     info!(panel = ?id, "panel hidden");
                     self.close_surface(&id);
                 }
+                BarEvent::PopupShown { id, output } => {
+                    info!(popup = ?id, ?output, "popup shown");
+                }
+                BarEvent::PopupHidden { id } => {
+                    if self.popup.as_ref() == Some(&id) {
+                        self.popup = None;
+                    }
+                    info!(popup = ?id, "popup hidden");
+                    self.close_surface(&id);
+                }
                 BarEvent::KeyPressed { keysym } => {
                     if keysym == Keysym::Escape.raw() {
                         self.hide_panels(bar);
@@ -404,6 +528,10 @@ impl Runtime {
                 self.panels.remove(&panel);
                 self.kinds.remove(&panel);
             }
+            Some(SurfaceKind::Popup { .. }) if self.popup.as_ref() == Some(id) => {
+                self.popup = None;
+            }
+            Some(SurfaceKind::Popup { .. }) => {}
             _ => {}
         }
     }
@@ -429,6 +557,24 @@ impl Runtime {
             }
             Some(SurfaceKind::Panel { module, .. }) => {
                 self.on_panel_pointer(bar, &module, x, y, kind);
+                return;
+            }
+            Some(SurfaceKind::Popup { module }) => {
+                if let PointerKind::Press { button: 0x110 } = kind
+                    && let Some(index) = self
+                        .panel_regions
+                        .get(&module)
+                        .and_then(|regions| regions.iter().position(|region| region.contains(x, y)))
+                {
+                    self.dispatch(
+                        Msg::ListSelect {
+                            module: module.clone(),
+                            index,
+                            source: ListSource::Popup,
+                        },
+                        bar,
+                    );
+                }
                 return;
             }
             _ => {}
@@ -480,6 +626,7 @@ impl Runtime {
                             Msg::ListSelect {
                                 module: module.clone(),
                                 index,
+                                source: ListSource::Panel,
                             },
                             bar,
                         );
@@ -605,6 +752,10 @@ impl Runtime {
                 let (scene, regions) = self.build_panel_scene(&module, width, height);
                 (scene, Vec::new(), Some((module, regions)))
             }
+            SurfaceKind::Popup { module } => {
+                let (scene, regions) = self.build_popup_scene(&module, width, height);
+                (scene, Vec::new(), Some((module, regions)))
+            }
             SurfaceKind::Backdrop { .. } => (
                 Scene {
                     background: skews_core::Rgba::TRANSPARENT,
@@ -663,12 +814,34 @@ impl Runtime {
         width: u32,
         height: u32,
     ) -> (Scene, Vec<RectRegion>) {
-        match self.shell.panel_content(module) {
+        let content = self.shell.panel_content(module);
+        self.build_content_scene(content.as_ref(), width, height)
+    }
+
+    /// Builds a popup (toast) scene from the module's popup content.
+    fn build_popup_scene(
+        &mut self,
+        module: &ModuleId,
+        width: u32,
+        height: u32,
+    ) -> (Scene, Vec<RectRegion>) {
+        let content = self.shell.popup_content(module);
+        self.build_content_scene(content.as_ref(), width, height)
+    }
+
+    /// Renders typed panel content into a scene with interactive regions.
+    fn build_content_scene(
+        &mut self,
+        content: Option<&PanelContent>,
+        width: u32,
+        height: u32,
+    ) -> (Scene, Vec<RectRegion>) {
+        match content {
             Some(PanelContent::Volume { percent, muted }) => {
-                self.build_volume_panel_scene(width, height, percent, muted)
+                self.build_volume_panel_scene(width, height, *percent, *muted)
             }
             Some(PanelContent::List { title, items }) => {
-                self.build_list_panel_scene(width, height, &title, &items)
+                self.build_list_panel_scene(width, height, title, items)
             }
             None => (
                 Scene {
@@ -916,6 +1089,27 @@ fn run(args: &Args) -> Result<()> {
 
     // Kernel messages: config reloads and compositor events.
     let (msg_tx, msg_channel) = channel::<Msg>();
+
+    // Notification server: owns org.freedesktop.Notifications while the shell
+    // runs (fails cleanly when another daemon holds the name).
+    {
+        let sender = msg_tx.clone();
+        match skews_services::notifications::spawn(move |event| {
+            let msg = match event {
+                NotificationEvent::Posted(notification) => Msg::Notification(notification),
+                NotificationEvent::Closed(id) => Msg::NotificationClosed(id),
+            };
+            let _ = sender.send(msg);
+        }) {
+            Ok(server) => {
+                runtime.borrow_mut().notifications = Some(std::sync::Arc::new(server));
+                info!("notification server ready");
+            }
+            Err(error) => {
+                warn!(%error, "notification server unavailable (is another daemon running?)");
+            }
+        }
+    }
     {
         let runtime = Rc::clone(&runtime);
         handle
@@ -1090,6 +1284,17 @@ fn log_effect(level: LogLevel, message: &str) {
         LogLevel::Info => info!(target: "rusty_skews::kernel", "{message}"),
         LogLevel::Warn => warn!(target: "rusty_skews::kernel", "{message}"),
         LogLevel::Error => error!(target: "rusty_skews::kernel", "{message}"),
+    }
+}
+
+/// Height needed by a popup for its content (capped at four rows).
+fn popup_size(content: &PanelContent) -> u32 {
+    match content {
+        PanelContent::List { items, .. } => {
+            let rows = items.len().min(4) as u32;
+            PANEL_LIST_HEADER + rows * PANEL_ROW_HEIGHT + PANEL_LIST_PADDING
+        }
+        _ => PANEL_HEIGHT,
     }
 }
 

@@ -11,6 +11,7 @@ pub mod clock;
 pub mod cpu;
 pub mod memory;
 pub mod network;
+pub mod notifications;
 pub mod volume;
 pub mod workspaces;
 
@@ -20,6 +21,7 @@ pub use clock::Clock;
 pub use cpu::CpuTemp;
 pub use memory::Memory;
 pub use network::Network;
+pub use notifications::Notifications;
 pub use volume::Volume;
 pub use workspaces::Workspaces;
 
@@ -32,5 +34,6 @@ pub fn register_all(registry: &mut skews_app::Registry) {
     volume::register(registry);
     network::register(registry);
     bluetooth::register(registry);
+    notifications::register(registry);
     workspaces::register(registry);
 }

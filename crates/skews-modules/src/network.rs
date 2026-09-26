@@ -118,7 +118,7 @@ impl Module for Network {
             } if module == &self.id => {
                 vec![Effect::Action(Action::TogglePanel(self.id.clone()))]
             }
-            Msg::ListSelect { module, index } if module == &self.id => {
+            Msg::ListSelect { module, index, .. } if module == &self.id => {
                 if *index == 0 {
                     let enabled = self
                         .status
@@ -162,7 +162,7 @@ pub fn register(registry: &mut Registry) {
 mod tests {
     use super::Network;
     use skews_app::{Module, ModuleOutput, Msg, PanelContent};
-    use skews_core::{Action, Effect, InteractionKind, ModuleId};
+    use skews_core::{Action, Effect, InteractionKind, ListSource, ModuleId};
     use skews_services::network::{
         AccessPoint, Connectivity, NetworkError, NetworkSource, NetworkStatus,
     };
@@ -271,14 +271,16 @@ mod tests {
         assert_eq!(
             module.update(&Msg::ListSelect {
                 module: ModuleId::from("network"),
-                index: 0
+                index: 0,
+                source: ListSource::Panel,
             }),
             vec![Effect::Action(Action::SetWifi(false))]
         );
         assert_eq!(
             module.update(&Msg::ListSelect {
                 module: ModuleId::from("network"),
-                index: 1
+                index: 1,
+                source: ListSource::Panel,
             }),
             vec![Effect::Action(Action::ConnectWifi(String::from(
                 "Open Net"
@@ -288,7 +290,8 @@ mod tests {
             module
                 .update(&Msg::ListSelect {
                     module: ModuleId::from("network"),
-                    index: 9
+                    index: 9,
+                    source: ListSource::Panel,
                 })
                 .is_empty()
         );

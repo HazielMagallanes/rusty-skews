@@ -70,7 +70,7 @@ modules = ["workspaces", "media"]
 [bar.center]
 modules = ["clock"]
 [bar.right]
-modules = ["network", "bluetooth", "cpu", "memory", "battery", "volume"]
+modules = ["network", "bluetooth", "notifications", "cpu", "memory", "battery", "volume"]
 ```
 
 ---
