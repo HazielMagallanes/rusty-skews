@@ -15,6 +15,11 @@ versiones.
 
 ### Agregado
 
+* Slice de medios/calendario de M2: módulo de medios MPRIS (chip de transporte
+  en la barra, play/pause/next/previous por D-Bus, panel de controles), módulo
+  de calendario con panel de mes (semanas que empiezan el lunes) y un OSD de
+  volumen transitorio tras cambios de mute/volumen. Nuevas acciones
+  `MediaPlayPause`/`MediaNext`/`MediaPrevious`.
 * Slice de notificaciones de M2: servidor D-Bus
   `org.freedesktop.Notifications` (zbus blocking, capacidades `body`/
   `body-markup`), un módulo `notifications` con contador/indicador DND en la

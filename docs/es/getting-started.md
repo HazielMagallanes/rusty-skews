@@ -101,9 +101,9 @@ Ambos archivos son opcionales; si faltan se usan los valores internos y
   [bar.left]
   modules = ["workspaces"]
   [bar.center]
-  modules = ["clock"]
+  modules = ["media", "clock"]
   [bar.right]
-  modules = ["network", "bluetooth", "notifications", "cpu", "memory", "battery", "volume"]
+  modules = ["network", "bluetooth", "notifications", "calendar", "cpu", "memory", "battery", "volume"]
   ```
 
   Los módulos referenciados se validan contra el registro en tiempo de

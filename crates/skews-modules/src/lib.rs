@@ -7,8 +7,10 @@
 
 pub mod battery;
 pub mod bluetooth;
+pub mod calendar;
 pub mod clock;
 pub mod cpu;
+pub mod media;
 pub mod memory;
 pub mod network;
 pub mod notifications;
@@ -17,8 +19,10 @@ pub mod workspaces;
 
 pub use battery::Battery;
 pub use bluetooth::Bluetooth;
+pub use calendar::Calendar;
 pub use clock::Clock;
 pub use cpu::CpuTemp;
+pub use media::Media;
 pub use memory::Memory;
 pub use network::Network;
 pub use notifications::Notifications;
@@ -35,5 +39,7 @@ pub fn register_all(registry: &mut skews_app::Registry) {
     network::register(registry);
     bluetooth::register(registry);
     notifications::register(registry);
+    media::register(registry);
+    calendar::register(registry);
     workspaces::register(registry);
 }

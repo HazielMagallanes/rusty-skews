@@ -11,6 +11,10 @@
 use skews_app::{Module, ModuleOutput, Msg, Registry};
 use skews_core::{Action, Effect, Effects, InteractionKind, ModuleId};
 use skews_services::audio::{AudioStatus, status};
+use std::time::{Duration, Instant};
+
+/// How long the volume OSD stays visible after a change.
+const OSD_DURATION: Duration = Duration::from_millis(1500);
 
 type Reader = Box<dyn Fn() -> Option<AudioStatus> + Send>;
 
@@ -20,6 +24,7 @@ pub struct Volume {
     reader: Reader,
     current: Option<AudioStatus>,
     output: ModuleOutput,
+    osd_until: Option<Instant>,
 }
 
 impl Volume {
@@ -36,6 +41,7 @@ impl Volume {
             reader,
             current: None,
             output: ModuleOutput::Empty,
+            osd_until: None,
         }
     }
 
@@ -65,14 +71,33 @@ impl Module for Volume {
 
     fn update(&mut self, msg: &Msg) -> Effects {
         match msg {
-            Msg::Tick { .. } => self.refresh(),
+            Msg::Tick { .. } => {
+                let mut effects = Vec::new();
+
+                if self.osd_until.is_some_and(|until| Instant::now() >= until) {
+                    self.osd_until = None;
+                    effects.push(Effect::Redraw);
+                }
+
+                effects.extend(self.refresh());
+                effects
+            }
             Msg::Interaction { module, kind } if module == &self.id => match kind {
                 InteractionKind::Click => {
                     vec![Effect::Action(Action::TogglePanel(self.id.clone()))]
                 }
-                InteractionKind::SecondaryClick => vec![Effect::Action(Action::ToggleMute)],
-                InteractionKind::ScrollUp => vec![Effect::Action(Action::AdjustVolume(0.05))],
-                InteractionKind::ScrollDown => vec![Effect::Action(Action::AdjustVolume(-0.05))],
+                InteractionKind::SecondaryClick => {
+                    self.osd_until = Some(Instant::now() + OSD_DURATION);
+                    vec![Effect::Action(Action::ToggleMute)]
+                }
+                InteractionKind::ScrollUp => {
+                    self.osd_until = Some(Instant::now() + OSD_DURATION);
+                    vec![Effect::Action(Action::AdjustVolume(0.05))]
+                }
+                InteractionKind::ScrollDown => {
+                    self.osd_until = Some(Instant::now() + OSD_DURATION);
+                    vec![Effect::Action(Action::AdjustVolume(-0.05))]
+                }
             },
             _ => Vec::new(),
         }
@@ -89,6 +114,12 @@ impl Module for Volume {
         };
 
         Some(skews_app::PanelContent::Volume { percent, muted })
+    }
+
+    /// The volume OSD: a transient popup after mute/volume changes.
+    fn popup(&self) -> Option<skews_app::PanelContent> {
+        self.osd_until?;
+        self.panel()
     }
 }
 

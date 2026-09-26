@@ -101,9 +101,9 @@ Both files are optional; missing files fall back to built-in defaults and
   [bar.left]
   modules = ["workspaces"]
   [bar.center]
-  modules = ["clock"]
+  modules = ["media", "clock"]
   [bar.right]
-  modules = ["network", "bluetooth", "notifications", "cpu", "memory", "battery", "volume"]
+  modules = ["network", "bluetooth", "notifications", "calendar", "cpu", "memory", "battery", "volume"]
   ```
 
   Modules referenced here are validated against the compile-time registry at

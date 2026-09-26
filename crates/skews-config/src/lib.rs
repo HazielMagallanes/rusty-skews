@@ -143,7 +143,7 @@ pub fn config_path_in(config_home: Option<PathBuf>, home: Option<PathBuf>) -> Pa
 }
 
 fn default_center() -> BarRegion {
-    region(&["clock"])
+    region(&["media", "clock"])
 }
 
 fn default_right() -> BarRegion {
@@ -151,6 +151,7 @@ fn default_right() -> BarRegion {
         "network",
         "bluetooth",
         "notifications",
+        "calendar",
         "cpu",
         "memory",
         "battery",
@@ -255,13 +256,14 @@ mod tests {
         assert_eq!(config.bar.height, 32);
         assert_eq!(config.bar.monitor, "*");
         assert_eq!(config.bar.left.modules, vec!["workspaces"]);
-        assert_eq!(config.bar.center.modules, vec!["clock"]);
+        assert_eq!(config.bar.center.modules, vec!["media", "clock"]);
         assert_eq!(
             config.bar.right.modules,
             vec![
                 "network",
                 "bluetooth",
                 "notifications",
+                "calendar",
                 "cpu",
                 "memory",
                 "battery",
