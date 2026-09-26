@@ -9,8 +9,8 @@ layer-shell compositors), built for **performance, security and scalability**.
 > but architected from scratch: layered hexagonal kernel, effects-as-data state
 > model, config-driven module composition and a demand-driven GPU renderer.
 
-**Status:** M0 — scaffold + hello bar (a themed layer-shell bar renders on every
-output). See the milestone table below.
+**Status:** M1 — kernel, UI core, runtime and bar modules are in place; the bar
+renders workspaces, clock, CPU temperature, memory and battery live.
 
 ---
 
