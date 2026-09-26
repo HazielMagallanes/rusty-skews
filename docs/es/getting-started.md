@@ -103,7 +103,7 @@ Ambos archivos son opcionales; si faltan se usan los valores internos y
   [bar.center]
   modules = ["clock"]
   [bar.right]
-  modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
+  modules = ["cpu", "memory", "battery", "volume"]
   ```
 
   Los módulos referenciados se validan contra el registro en tiempo de

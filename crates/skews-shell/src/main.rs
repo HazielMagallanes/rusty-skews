@@ -15,14 +15,14 @@ use clap::Parser;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use skews_app::{ModuleOutput, ModuleSlot, Msg, Shell};
 use skews_config::{Config, default_config_path};
-use skews_core::{Effect, Effects, LogLevel};
+use skews_core::{Action, Effect, Effects, InteractionKind, LogLevel, ModuleId};
 use skews_ipc_hyprland::{HyprEvent, active_workspace, event_socket_path, spawn_event_listener};
 use skews_layout::{BarLayoutOptions, TextMetrics};
 use skews_render::{GpuSurface, Renderer};
 use skews_text::TextEngine;
 use skews_theme::{Tokens, default_palette_path};
 use skews_wayland::{
-    BarEvent, BarOptions, BarShell, Connection, EventQueue, ObjectId, display_handle,
+    BarEvent, BarOptions, BarShell, Connection, EventQueue, ObjectId, PointerKind, display_handle,
     registry_queue_init, window_handle,
 };
 use tracing::{debug, error, info, warn};
@@ -87,6 +87,13 @@ struct SurfaceState {
     configured: Option<(u32, u32)>,
 }
 
+/// A clickable region of the bar, in surface-local pixels.
+struct HitRegion {
+    module: ModuleId,
+    x: f32,
+    width: f32,
+}
+
 /// Runtime state shared by the calloop sources.
 struct Runtime {
     shell: Shell,
@@ -95,6 +102,8 @@ struct Runtime {
     instance: wgpu::Instance,
     renderer: Option<Renderer>,
     surfaces: HashMap<ObjectId, SurfaceState>,
+    hits: HashMap<ObjectId, Vec<HitRegion>>,
+    actions_executed: bool,
 }
 
 impl Runtime {
@@ -109,6 +118,8 @@ impl Runtime {
             instance,
             renderer: None,
             surfaces: HashMap::new(),
+            hits: HashMap::new(),
+            actions_executed: false,
         }
     }
 
@@ -123,20 +134,47 @@ impl Runtime {
             info!(height, "bar height changed; surfaces will reconfigure");
         }
 
-        self.apply(effects);
-    }
+        let mut redraw = self.apply(effects);
 
-    fn apply(&mut self, effects: Effects) {
-        let mut redraw = false;
-        for effect in effects {
-            match effect {
-                Effect::Log { level, message } => log_effect(level, &message),
-                Effect::Redraw => redraw = true,
-            }
+        // Actions change state outside the kernel (volume, mute); refresh the
+        // modules right away instead of waiting for the next tick.
+        if self.actions_executed {
+            self.actions_executed = false;
+            let refresh = self.shell.update(Msg::Tick { unix_ms: unix_ms() });
+            redraw |= self.apply(refresh);
         }
 
         if redraw {
             self.render_all();
+        }
+    }
+
+    /// Executes effects; returns `true` when a redraw is needed.
+    fn apply(&mut self, effects: Effects) -> bool {
+        let mut redraw = false;
+
+        for effect in effects {
+            match effect {
+                Effect::Log { level, message } => log_effect(level, &message),
+                Effect::Redraw => redraw = true,
+                Effect::Action(action) => {
+                    self.execute(action);
+                    self.actions_executed = true;
+                }
+            }
+        }
+
+        redraw
+    }
+
+    fn execute(&self, action: Action) {
+        let result = match action {
+            Action::AdjustVolume(delta) => skews_services::audio::adjust_volume(delta),
+            Action::ToggleMute => skews_services::audio::toggle_mute(),
+        };
+
+        if let Err(error) = result {
+            warn!(%error, "audio action failed");
         }
     }
 
@@ -155,9 +193,48 @@ impl Runtime {
                 }
                 BarEvent::Closed { id } => {
                     self.surfaces.remove(&id);
+                    self.hits.remove(&id);
                     info!(surface = ?id, "bar surface closed");
                 }
+                BarEvent::Pointer { id, position, kind } => {
+                    self.on_pointer(bar, &id, position, kind);
+                }
             }
+        }
+    }
+
+    /// Routes pointer input to the module under the cursor.
+    fn on_pointer(
+        &mut self,
+        bar: &mut BarShell,
+        id: &ObjectId,
+        position: (f64, f64),
+        kind: PointerKind,
+    ) {
+        let x = position.0 as f32;
+        let Some(module) = self.hits.get(id).and_then(|hits| {
+            hits.iter()
+                .find(|hit| x >= hit.x && x < hit.x + hit.width)
+                .map(|hit| hit.module.clone())
+        }) else {
+            return;
+        };
+
+        let interaction = match kind {
+            // Linux button code 0x110 is the left mouse button.
+            PointerKind::Press { button: 0x110 } => Some(InteractionKind::Click),
+            PointerKind::Scroll { vertical, .. } if vertical > 0.0 => {
+                Some(InteractionKind::ScrollUp)
+            }
+            PointerKind::Scroll { vertical, .. } if vertical < 0.0 => {
+                Some(InteractionKind::ScrollDown)
+            }
+            _ => None,
+        };
+
+        if let Some(kind) = interaction {
+            debug!(module = %module, ?kind, "module interaction");
+            self.dispatch(Msg::Interaction { module, kind }, bar);
         }
     }
 
@@ -244,13 +321,15 @@ impl Runtime {
             state.configured = Some(size);
         }
 
-        let scene = build_scene(
+        let (scene, hits) = build_scene(
             &self.shell,
             &mut self.text_engine,
             &self.theme,
             state.width,
             state.height,
         )?;
+        self.hits.insert(id.clone(), hits);
+
         renderer
             .render_scene(&mut state.gpu, &scene, &mut self.text_engine)
             .context("failed to render the scene")?;
@@ -511,17 +590,19 @@ fn build_scene(
     theme: &Tokens,
     width: u32,
     height: u32,
-) -> Result<skews_ui::Scene> {
+) -> Result<(skews_ui::Scene, Vec<HitRegion>)> {
     const TEXT_SIZE: f32 = 12.0;
+    const HIT_PADDING: f32 = 4.0;
 
     let plan = shell.bar_plan();
-    let mut measure = |slots: &[ModuleSlot]| -> Vec<(String, TextMetrics)> {
+    let mut measure = |slots: &[ModuleSlot]| -> Vec<(ModuleId, String, TextMetrics)> {
         slots
             .iter()
             .filter_map(|slot| match &slot.output {
                 ModuleOutput::Text(text) => {
                     let shaped = text_engine.measure(text, TEXT_SIZE);
                     Some((
+                        slot.id.clone(),
                         text.clone(),
                         TextMetrics {
                             width: shaped.width,
@@ -538,10 +619,10 @@ fn build_scene(
     let center = measure(&plan.center);
     let right = measure(&plan.right);
 
-    let metrics = |items: &[(String, TextMetrics)]| {
+    let metrics = |items: &[(ModuleId, String, TextMetrics)]| {
         items
             .iter()
-            .map(|(_, metrics)| *metrics)
+            .map(|(_, _, metrics)| *metrics)
             .collect::<Vec<_>>()
     };
     let layout = skews_layout::layout_bar(
@@ -553,12 +634,13 @@ fn build_scene(
     .context("layout pass failed")?;
 
     let mut texts = Vec::new();
+    let mut hits = Vec::new();
     for (positions, items) in [
         (&layout.left, &left),
         (&layout.center, &center),
         (&layout.right, &right),
     ] {
-        for (position, (text, _)) in positions.iter().zip(items.iter()) {
+        for (position, (module, text, item_metrics)) in positions.iter().zip(items.iter()) {
             texts.push(skews_ui::BarText {
                 text: text.clone(),
                 x: position.x,
@@ -566,12 +648,17 @@ fn build_scene(
                 size: TEXT_SIZE,
                 color: theme.on_surface,
             });
+            hits.push(HitRegion {
+                module: module.clone(),
+                x: position.x - HIT_PADDING,
+                width: item_metrics.width + HIT_PADDING * 2.0,
+            });
         }
     }
 
-    Ok(skews_ui::build_bar_scene(
-        theme.surface_container.with_alpha(0.9),
-        &texts,
+    Ok((
+        skews_ui::build_bar_scene(theme.surface_container.with_alpha(0.9), &texts),
+        hits,
     ))
 }
 

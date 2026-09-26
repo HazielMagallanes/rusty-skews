@@ -103,7 +103,7 @@ Both files are optional; missing files fall back to built-in defaults and
   [bar.center]
   modules = ["clock"]
   [bar.right]
-  modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
+  modules = ["cpu", "memory", "battery", "volume"]
   ```
 
   Modules referenced here are validated against the compile-time registry at

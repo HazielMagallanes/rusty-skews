@@ -17,11 +17,25 @@ pub enum LogLevel {
     Error,
 }
 
+/// Shell-level actions requested by modules.
+///
+/// The kernel never performs I/O; modules describe the intent and the runtime
+/// executes it against the matching service.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    /// Adjust the default audio sink volume by a relative delta (`0.05` = +5 %).
+    AdjustVolume(f32),
+    /// Toggle mute on the default audio sink.
+    ToggleMute,
+}
+
 /// A side effect requested by the kernel.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
     /// Request a redraw of every mapped surface.
     Redraw,
+    /// Execute a shell action through the runtime.
+    Action(Action),
     /// Emit a log line through the shell's tracing pipeline.
     Log {
         /// Severity of the message.

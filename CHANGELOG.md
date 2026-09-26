@@ -15,6 +15,13 @@ ships releases.
 
 ### Added
 
+* M2 input slice: pointer events (click, scroll) on the bar with hit testing,
+  routed to modules as typed interactions; modules return `Effect::Action` and
+  the runtime executes it against the matching service.
+* `volume` module and the audio service adapter (`wpctl`, a documented CLI
+  exception per ADR-0005): shows percentage or `MUTED`, click toggles mute and
+  scroll adjusts by 5 %. Defaults and config examples now list only registered
+  modules.
 * M1 acceptance tooling: `cargo xt bench-live` builds the release shell, waits
   for the first frame and reports cold start, idle CPU and RSS against the
   documented budgets (`--seconds` for soak runs).

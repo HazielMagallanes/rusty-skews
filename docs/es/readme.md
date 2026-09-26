@@ -11,8 +11,8 @@ pensado para Hyprland (y otros compositores con layer-shell), construido para
 > *effects-as-data*, composición de módulos por configuración y un renderizador
 > GPU bajo demanda.
 
-**Estado:** M0 — andamiaje + barra “hola mundo” (una barra temática con
-layer-shell se dibuja en cada salida). Ver la tabla de hitos más abajo.
+**Estado:** M1 — kernel, núcleo de UI, runtime y módulos de barra en su lugar;
+la barra dibuja workspaces, reloj, temperatura de CPU, memoria y batería en vivo.
 
 ---
 
@@ -72,7 +72,7 @@ modules = ["workspaces", "media"]
 [bar.center]
 modules = ["clock"]
 [bar.right]
-modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
+modules = ["cpu", "memory", "battery", "volume"]
 ```
 
 ---
@@ -82,7 +82,7 @@ modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
 | Hito | Alcance | Estado |
 |---|---|---|
 | M0 | Andamiaje, CI, ADRs, doctor, barra en todas las salidas | ✅ |
-| M1 | Kernel + núcleo de UI (texto, layout, render, ui) + módulos de barra | ⏳ |
+| M1 | Kernel + núcleo de UI (texto, layout, render, ui) + módulos de barra | ✅ |
 | M2 | Paneles, servicios (audio/red/bluetooth/media/notify/tray), OSD | ⏳ |
 | M3 | Lanzador con proveedores (apps, cálculo, acciones) | ⏳ |
 | M4 | Selector de fondos y pipeline de temas | ⏳ |
