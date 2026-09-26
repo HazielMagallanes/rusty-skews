@@ -33,6 +33,10 @@ pub enum Action {
     ToggleMute,
     /// Toggle the dropdown panel of a module.
     TogglePanel(ModuleId),
+    /// Enable or disable the Wi-Fi radio.
+    SetWifi(bool),
+    /// Connect to a Wi-Fi network by SSID.
+    ConnectWifi(String),
 }
 
 /// A side effect requested by the kernel.

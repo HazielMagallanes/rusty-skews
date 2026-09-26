@@ -15,6 +15,13 @@ versiones.
 
 ### Agregado
 
+* Slice de red de M2: estado y control de Wi-Fi a través de la API D-Bus de
+  NetworkManager (proxies zbus blocking tipados, sin parsear CLI), un módulo
+  `network` que muestra el SSID activo en la barra y un panel de lista
+  seleccionable (fila de encendido/apagado + puntos de acceso ordenados por
+  señal, con la red activa resaltada). Nuevo contenido de panel tipado
+  (`PanelContent::List`/`Volume`) con regiones de clic por fila, más acciones
+  `SetWifi`/`ConnectWifi` y mensajes `PanelOpened`/`ListSelect`.
 * Slice de paneles de M2: superficies de panel desplegable con backdrop que
   captura clics, cierre con Escape y con clic afuera; el módulo `volume` ahora
   abre un panel al hacer clic (clic derecho silencia, scroll ajusta) con un

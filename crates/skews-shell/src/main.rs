@@ -13,7 +13,7 @@ use calloop::timer::{TimeoutAction, Timer};
 use calloop_wayland_source::WaylandSource;
 use clap::Parser;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use skews_app::{ModuleOutput, ModuleSlot, Msg, Shell};
+use skews_app::{ListItem, ModuleOutput, ModuleSlot, Msg, PanelContent, Shell};
 use skews_config::{Config, default_config_path};
 use skews_core::{Action, Effect, Effects, InteractionKind, LogLevel, ModuleId};
 use skews_ipc_hyprland::{HyprEvent, active_workspace, event_socket_path, spawn_event_listener};
@@ -86,6 +86,10 @@ const TICK_INTERVAL: Duration = Duration::from_secs(2);
 /// Volume panel dimensions.
 const PANEL_WIDTH: u32 = 280;
 const PANEL_HEIGHT: u32 = 104;
+/// List panel metrics.
+const PANEL_LIST_HEADER: u32 = 42;
+const PANEL_ROW_HEIGHT: u32 = 26;
+const PANEL_LIST_PADDING: u32 = 10;
 /// Distance from the right edge for dropdown panels.
 const PANEL_MARGIN_RIGHT: i32 = 12;
 /// Panel corner radius.
@@ -150,6 +154,7 @@ struct Runtime {
     instance: wgpu::Instance,
     renderer: Option<Renderer>,
     qh: QueueHandle<BarShell>,
+    network: std::sync::Arc<dyn skews_services::network::NetworkSource>,
     surfaces: HashMap<ObjectId, SurfaceState>,
     kinds: HashMap<ObjectId, SurfaceKind>,
     hits: HashMap<ObjectId, Vec<HitRegion>>,
@@ -172,6 +177,7 @@ impl Runtime {
             instance,
             renderer: None,
             qh,
+            network: std::sync::Arc::new(skews_services::network::NetworkManager),
             surfaces: HashMap::new(),
             kinds: HashMap::new(),
             hits: HashMap::new(),
@@ -242,6 +248,16 @@ impl Runtime {
                 let output = self.last_output.clone();
                 self.toggle_panel(&module, output.as_deref(), bar);
             }
+            Action::SetWifi(enabled) => {
+                if let Err(error) = self.network.set_wifi_enabled(enabled) {
+                    warn!(%error, "failed to toggle Wi-Fi");
+                }
+            }
+            Action::ConnectWifi(ssid) => {
+                if let Err(error) = self.network.connect(&ssid) {
+                    warn!(%error, %ssid, "failed to connect");
+                }
+            }
         }
     }
 
@@ -270,9 +286,18 @@ impl Runtime {
             bar.hide_panel(&id);
         }
 
+        // Refresh panel-only data (scans, device lists) before sizing the
+        // panel, so its height matches the content it will show.
+        self.dispatch(
+            Msg::PanelOpened {
+                module: module.clone(),
+            },
+            bar,
+        );
+
         let options = PanelOptions {
             width: PANEL_WIDTH,
-            height: PANEL_HEIGHT,
+            height: self.panel_height(module),
             margin_top: self.shell.state().bar.height as i32 + PANEL_GAP,
             margin_right: PANEL_MARGIN_RIGHT,
             namespace: format!("rusty-skews-panel-{module}"),
@@ -292,6 +317,16 @@ impl Runtime {
                 self.panels.insert(id, module.clone());
             }
             None => warn!(module = %module, "no output available for the panel"),
+        }
+    }
+
+    /// Panel height derived from its content.
+    fn panel_height(&self, module: &ModuleId) -> u32 {
+        match self.shell.panel_content(module) {
+            Some(PanelContent::List { items, .. }) => {
+                PANEL_LIST_HEADER + items.len() as u32 * PANEL_ROW_HEIGHT + PANEL_LIST_PADDING
+            }
+            _ => PANEL_HEIGHT,
         }
     }
 
@@ -412,13 +447,28 @@ impl Runtime {
                 let Some(regions) = self.panel_regions.get(module).cloned() else {
                     return;
                 };
-                let Some(region) = regions.iter().find(|region| region.contains(x, y)) else {
+                let Some(index) = regions.iter().position(|region| region.contains(x, y)) else {
                     return;
                 };
 
-                let fraction = ((x - region.x) / region.width).clamp(0.0, 1.0);
-                self.execute(Action::SetVolume(fraction), bar);
-                self.refresh_after_action(bar);
+                match self.shell.panel_content(module) {
+                    Some(PanelContent::Volume { .. }) => {
+                        let region = regions[index];
+                        let fraction = ((x - region.x) / region.width).clamp(0.0, 1.0);
+                        self.execute(Action::SetVolume(fraction), bar);
+                        self.refresh_after_action(bar);
+                    }
+                    Some(PanelContent::List { .. }) => {
+                        self.dispatch(
+                            Msg::ListSelect {
+                                module: module.clone(),
+                                index,
+                            },
+                            bar,
+                        );
+                    }
+                    _ => {}
+                }
             }
             PointerKind::Scroll { vertical, .. } if vertical != 0.0 => {
                 let interaction = if vertical > 0.0 {
@@ -596,11 +646,33 @@ impl Runtime {
         width: u32,
         height: u32,
     ) -> (Scene, Vec<RectRegion>) {
+        match self.shell.panel_content(module) {
+            Some(PanelContent::Volume { percent, muted }) => {
+                self.build_volume_panel_scene(width, height, percent, muted)
+            }
+            Some(PanelContent::List { title, items }) => {
+                self.build_list_panel_scene(width, height, &title, &items)
+            }
+            None => (
+                Scene {
+                    background: skews_core::Rgba::TRANSPARENT,
+                    items: Vec::new(),
+                },
+                Vec::new(),
+            ),
+        }
+    }
+
+    /// Volume slider panel.
+    fn build_volume_panel_scene(
+        &mut self,
+        width: u32,
+        height: u32,
+        percent: f32,
+        muted: bool,
+    ) -> (Scene, Vec<RectRegion>) {
         const TITLE_SIZE: f32 = 11.0;
         const VALUE_SIZE: f32 = 13.0;
-
-        let level = self.module_level(module);
-        let (percent, muted) = level.unwrap_or((0.0, false));
 
         let track_width = width as f32 - SLIDER_X * 2.0;
         let fill_width = track_width * (percent / 100.0).clamp(0.0, 1.0);
@@ -673,20 +745,84 @@ impl Runtime {
         (scene, regions)
     }
 
-    /// Returns a module's level output, when it publishes one.
-    fn module_level(&self, module: &ModuleId) -> Option<(f32, bool)> {
-        let plan = self.shell.bar_plan();
-        let slots = [plan.left, plan.center, plan.right].concat();
+    /// Selectable list panel (networks, devices, …).
+    fn build_list_panel_scene(
+        &mut self,
+        width: u32,
+        height: u32,
+        title: &str,
+        items: &[ListItem],
+    ) -> (Scene, Vec<RectRegion>) {
+        const TITLE_SIZE: f32 = 11.0;
+        const LABEL_SIZE: f32 = 12.0;
+        const DETAIL_SIZE: f32 = 11.0;
 
-        slots.iter().find_map(|slot| {
-            if &slot.id != module {
-                return None;
+        let mut draw_items = vec![
+            DrawItem::Rect {
+                rect: skews_core::Rect::new(0, 0, width, height),
+                color: self.theme.surface_container.with_alpha(0.96),
+                radius: PANEL_RADIUS,
+            },
+            DrawItem::Text {
+                text: title.to_owned(),
+                x: 16,
+                y: 14,
+                size: TITLE_SIZE,
+                color: self.theme.on_surface.with_alpha(0.7),
+            },
+        ];
+        let mut regions = Vec::new();
+
+        for (index, item) in items.iter().enumerate() {
+            let row_y = PANEL_LIST_HEADER + index as u32 * PANEL_ROW_HEIGHT;
+
+            if item.active {
+                draw_items.push(DrawItem::Rect {
+                    rect: skews_core::Rect::new(
+                        8,
+                        row_y as i32 - 2,
+                        width - 16,
+                        PANEL_ROW_HEIGHT - 2,
+                    ),
+                    color: self.theme.primary.with_alpha(0.18),
+                    radius: 6.0,
+                });
             }
-            match &slot.output {
-                ModuleOutput::Level { percent, muted } => Some((*percent, *muted)),
-                _ => None,
+
+            draw_items.push(DrawItem::Text {
+                text: item.label.clone(),
+                x: 16,
+                y: row_y as i32 + 4,
+                size: LABEL_SIZE,
+                color: self.theme.on_surface,
+            });
+
+            if !item.detail.is_empty() {
+                let detail_width = self.text_engine.measure(&item.detail, DETAIL_SIZE).width;
+                draw_items.push(DrawItem::Text {
+                    text: item.detail.clone(),
+                    x: (width as f32 - 16.0 - detail_width).round() as i32,
+                    y: row_y as i32 + 6,
+                    size: DETAIL_SIZE,
+                    color: self.theme.on_surface.with_alpha(0.6),
+                });
             }
-        })
+
+            regions.push(RectRegion {
+                x: 8.0,
+                y: row_y as f32 - 2.0,
+                width: width as f32 - 16.0,
+                height: PANEL_ROW_HEIGHT as f32,
+            });
+        }
+
+        (
+            Scene {
+                background: skews_core::Rgba::TRANSPARENT,
+                items: draw_items,
+            },
+            regions,
+        )
     }
 }
 

@@ -15,6 +15,12 @@ ships releases.
 
 ### Added
 
+* M2 network slice: Wi-Fi status and control through NetworkManager's D-Bus
+  API (typed zbus blocking proxies, no CLI parsing), a `network` module showing
+  the active SSID on the bar, and a selectable list panel (Wi-Fi toggle row +
+  access points sorted by signal, active network highlighted). New typed panel
+  content (`PanelContent::List`/`Volume`) with per-row hit regions, plus
+  `SetWifi`/`ConnectWifi` actions and `PanelOpened`/`ListSelect` messages.
 * M2 panel slice: dropdown panel surfaces with a click-catching backdrop,
   Escape and click-outside dismissal; the `volume` module now opens a panel on
   click (right-click mutes, scroll adjusts) with a slider that sets the volume
