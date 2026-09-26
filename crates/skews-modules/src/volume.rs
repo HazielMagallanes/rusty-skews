@@ -5,7 +5,8 @@
 //! # no options yet
 //! ```
 //!
-//! Interactions: click toggles mute, scroll up/down adjusts the volume by 5 %.
+//! Interactions: click toggles the volume panel, right-click toggles mute and
+//! scroll up/down adjusts the volume by 5 %.
 
 use skews_app::{Module, ModuleOutput, Msg, Registry};
 use skews_core::{Action, Effect, Effects, InteractionKind, ModuleId};
@@ -17,8 +18,7 @@ type Reader = Box<dyn Fn() -> Option<AudioStatus> + Send>;
 pub struct Volume {
     id: ModuleId,
     reader: Reader,
-    current: Option<AudioStatus>,
-    text: String,
+    output: ModuleOutput,
 }
 
 impl Volume {
@@ -33,29 +33,23 @@ impl Volume {
         Self {
             id: ModuleId::from("volume"),
             reader,
-            current: None,
-            text: String::new(),
+            output: ModuleOutput::Empty,
         }
     }
 
     fn refresh(&mut self) -> Effects {
-        let current = (self.reader)();
-        self.current = current;
-
-        let text = match current {
-            Some(status) if status.muted => String::from("MUTED"),
-            Some(status) => format!("{}%", (status.volume * 100.0).round() as i32),
-            None => String::from("--%"),
+        let output = match (self.reader)() {
+            Some(status) => ModuleOutput::Level {
+                percent: status.volume * 100.0,
+                muted: status.muted,
+            },
+            None => ModuleOutput::Text(String::from("--%")),
         };
 
-        self.apply(text)
-    }
-
-    fn apply(&mut self, text: String) -> Effects {
-        if text == self.text {
+        if output == self.output {
             return Vec::new();
         }
-        self.text = text;
+        self.output = output;
         vec![Effect::Redraw]
     }
 }
@@ -69,24 +63,19 @@ impl Module for Volume {
         match msg {
             Msg::Tick { .. } => self.refresh(),
             Msg::Interaction { module, kind } if module == &self.id => match kind {
-                InteractionKind::Click => vec![Effect::Action(Action::ToggleMute)],
-                InteractionKind::ScrollUp => {
-                    vec![Effect::Action(Action::AdjustVolume(0.05))]
+                InteractionKind::Click => {
+                    vec![Effect::Action(Action::TogglePanel(self.id.clone()))]
                 }
-                InteractionKind::ScrollDown => {
-                    vec![Effect::Action(Action::AdjustVolume(-0.05))]
-                }
+                InteractionKind::SecondaryClick => vec![Effect::Action(Action::ToggleMute)],
+                InteractionKind::ScrollUp => vec![Effect::Action(Action::AdjustVolume(0.05))],
+                InteractionKind::ScrollDown => vec![Effect::Action(Action::AdjustVolume(-0.05))],
             },
             _ => Vec::new(),
         }
     }
 
     fn output(&self) -> ModuleOutput {
-        if self.text.is_empty() {
-            ModuleOutput::Empty
-        } else {
-            ModuleOutput::Text(self.text.clone())
-        }
+        self.output.clone()
     }
 }
 
@@ -108,27 +97,43 @@ mod tests {
         Volume::with_reader(Box::new(move || Some(AudioStatus { volume, muted })))
     }
 
+    fn tick() -> Msg {
+        Msg::Tick { unix_ms: 0 }
+    }
+
     #[test]
-    fn renders_percentage_and_mute() {
+    fn renders_level_and_mute() {
         let mut loud = module(0.65, false);
-        loud.update(&Msg::Tick { unix_ms: 0 });
-        assert_eq!(loud.output(), ModuleOutput::Text(String::from("65%")));
+        loud.update(&tick());
+        assert_eq!(
+            loud.output(),
+            ModuleOutput::Level {
+                percent: 65.0,
+                muted: false
+            }
+        );
 
         let mut muted = module(0.65, true);
-        muted.update(&Msg::Tick { unix_ms: 0 });
-        assert_eq!(muted.output(), ModuleOutput::Text(String::from("MUTED")));
+        muted.update(&tick());
+        assert_eq!(
+            muted.output(),
+            ModuleOutput::Level {
+                percent: 65.0,
+                muted: true
+            }
+        );
     }
 
     #[test]
     fn missing_sink_renders_placeholder() {
         let mut module = Volume::with_reader(Box::new(|| None));
-        module.update(&Msg::Tick { unix_ms: 0 });
+        module.update(&tick());
 
         assert_eq!(module.output(), ModuleOutput::Text(String::from("--%")));
     }
 
     #[test]
-    fn interactions_request_audio_actions() {
+    fn interactions_request_actions() {
         let mut module = module(0.5, false);
         let target = |kind| Msg::Interaction {
             module: ModuleId::from("volume"),
@@ -137,6 +142,12 @@ mod tests {
 
         assert_eq!(
             module.update(&target(InteractionKind::Click)),
+            vec![Effect::Action(Action::TogglePanel(ModuleId::from(
+                "volume"
+            )))]
+        );
+        assert_eq!(
+            module.update(&target(InteractionKind::SecondaryClick)),
             vec![Effect::Action(Action::ToggleMute)]
         );
         assert_eq!(

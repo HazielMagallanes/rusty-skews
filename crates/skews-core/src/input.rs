@@ -5,6 +5,8 @@
 pub enum InteractionKind {
     /// Primary (left) click.
     Click,
+    /// Secondary (right) click.
+    SecondaryClick,
     /// Scroll wheel/touchpad up.
     ScrollUp,
     /// Scroll wheel/touchpad down.
