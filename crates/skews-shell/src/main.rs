@@ -19,6 +19,7 @@ use skews_core::{Action, Effect, Effects, InteractionKind, ListSource, LogLevel,
 use skews_ipc_hyprland::{HyprEvent, active_workspace, event_socket_path, spawn_event_listener};
 use skews_layout::{BarLayoutOptions, TextMetrics};
 use skews_render::{GpuSurface, Renderer};
+use skews_services::media::{MediaSource, Mpris};
 use skews_services::notifications::{NotificationEvent, NotificationServer};
 use skews_text::TextEngine;
 use skews_theme::{Tokens, default_palette_path};
@@ -167,9 +168,11 @@ struct Runtime {
     panel_regions: HashMap<ModuleId, Vec<RectRegion>>,
     panels: HashMap<ObjectId, ModuleId>,
     popup: Option<ObjectId>,
+    popup_module: Option<ModuleId>,
     popup_size: (u32, u32),
     notifications: Option<std::sync::Arc<NotificationServer>>,
     deadlines: HashMap<u32, std::time::Instant>,
+    media: std::sync::Arc<dyn MediaSource>,
     last_output: Option<String>,
     pending_interaction: Option<(ModuleId, InteractionKind)>,
     actions_executed: bool,
@@ -195,9 +198,11 @@ impl Runtime {
             panel_regions: HashMap::new(),
             panels: HashMap::new(),
             popup: None,
+            popup_module: None,
             popup_size: (0, 0),
             notifications: None,
             deadlines: HashMap::new(),
+            media: std::sync::Arc::new(Mpris),
             last_output: None,
             pending_interaction: None,
             actions_executed: false,
@@ -277,47 +282,52 @@ impl Runtime {
     /// Keeps the popup surface in sync with the module that wants one.
     fn sync_popup(&mut self, bar: &mut BarShell) {
         let popups = self.shell.popup_modules();
+        let wanted = popups
+            .first()
+            .map(|(module, content)| (module.clone(), popup_size(content)));
 
-        match (popups.first(), self.popup.clone()) {
-            (Some((module, content)), None) => {
-                let size = popup_size(content);
-                let options = PanelOptions {
-                    width: NOTIFICATION_WIDTH,
-                    height: size,
-                    margin_top: self.shell.state().bar.height as i32 + PANEL_GAP,
-                    margin_right: PANEL_MARGIN_RIGHT,
-                    namespace: String::from("rusty-skews-notification"),
-                };
-
-                match bar.show_popup(&self.qh, self.last_output.as_deref(), &options) {
-                    Some(id) => {
-                        self.kinds.insert(
-                            id.clone(),
-                            SurfaceKind::Popup {
-                                module: module.clone(),
-                            },
-                        );
-                        self.popup = Some(id);
-                        self.popup_size = (NOTIFICATION_WIDTH, size);
-                    }
-                    None => warn!("no output available for the notification popup"),
-                }
-            }
-            (Some((_, content)), Some(id)) => {
-                let size = popup_size(content);
-                if self.popup_size.1 != size {
-                    // Height changed: recreate the popup with the new size.
-                    bar.hide_popup(&id);
-                    self.popup = None;
-                    self.popup_size = (NOTIFICATION_WIDTH, size);
-                    self.sync_popup(bar);
-                }
-            }
-            (None, Some(id)) => {
+        let Some((module, size)) = wanted else {
+            if let Some(id) = self.popup.take() {
                 bar.hide_popup(&id);
-                self.popup = None;
             }
-            (None, None) => {}
+            self.popup_module = None;
+            return;
+        };
+
+        // Keep the popup when the same module wants the same size.
+        if self.popup.is_some()
+            && self.popup_module.as_ref() == Some(&module)
+            && self.popup_size == (NOTIFICATION_WIDTH, size)
+        {
+            return;
+        }
+
+        // Otherwise recreate it (different module, different content height).
+        if let Some(id) = self.popup.take() {
+            bar.hide_popup(&id);
+        }
+
+        let options = PanelOptions {
+            width: NOTIFICATION_WIDTH,
+            height: size,
+            margin_top: self.shell.state().bar.height as i32 + PANEL_GAP,
+            margin_right: PANEL_MARGIN_RIGHT,
+            namespace: String::from("rusty-skews-popup"),
+        };
+
+        match bar.show_popup(&self.qh, self.last_output.as_deref(), &options) {
+            Some(id) => {
+                self.kinds.insert(
+                    id.clone(),
+                    SurfaceKind::Popup {
+                        module: module.clone(),
+                    },
+                );
+                self.popup = Some(id);
+                self.popup_module = Some(module);
+                self.popup_size = (NOTIFICATION_WIDTH, size);
+            }
+            None => warn!("no output available for the popup"),
         }
     }
 
@@ -388,6 +398,21 @@ impl Runtime {
                 self.deadlines.remove(&id);
                 let effects = self.shell.update(Msg::NotificationClosed(id));
                 let _ = self.apply(effects, bar);
+            }
+            Action::MediaPlayPause => {
+                if let Err(error) = self.media.play_pause() {
+                    warn!(%error, "media play/pause failed");
+                }
+            }
+            Action::MediaNext => {
+                if let Err(error) = self.media.next() {
+                    warn!(%error, "media next failed");
+                }
+            }
+            Action::MediaPrevious => {
+                if let Err(error) = self.media.previous() {
+                    warn!(%error, "media previous failed");
+                }
             }
         }
     }

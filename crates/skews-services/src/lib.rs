@@ -8,5 +8,6 @@
 
 pub mod audio;
 pub mod bluetooth;
+pub mod media;
 pub mod network;
 pub mod notifications;

@@ -45,6 +45,12 @@ pub enum Action {
     DisconnectBluetooth(String),
     /// Dismiss a notification by id.
     DismissNotification(u32),
+    /// Toggle play/pause on the active media player.
+    MediaPlayPause,
+    /// Skip to the next track.
+    MediaNext,
+    /// Return to the previous track.
+    MediaPrevious,
 }
 
 /// A side effect requested by the kernel.

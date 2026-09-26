@@ -15,6 +15,11 @@ ships releases.
 
 ### Added
 
+* M2 media/calendar slice: an MPRIS media module (transport chip on the bar,
+  play/pause/next/previous over D-Bus, controls panel), a calendar module with
+  a Monday-first month grid panel, and a transient volume OSD popup after
+  mute/volume changes. New `MediaPlayPause`/`MediaNext`/`MediaPrevious`
+  actions.
 * M2 notifications slice: a `org.freedesktop.Notifications` D-Bus server
   (zbus blocking, capabilities `body`/`body-markup`), a `notifications` module
   with a bar counter/DND chip, a notification center panel (DND toggle +

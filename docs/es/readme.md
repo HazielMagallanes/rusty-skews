@@ -68,11 +68,11 @@ height = 32
 monitor = "*"
 
 [bar.left]
-modules = ["workspaces", "media"]
+modules = ["workspaces"]
 [bar.center]
-modules = ["clock"]
+modules = ["media", "clock"]
 [bar.right]
-modules = ["network", "bluetooth", "notifications", "cpu", "memory", "battery", "volume"]
+modules = ["network", "bluetooth", "notifications", "calendar", "cpu", "memory", "battery", "volume"]
 ```
 
 ---
