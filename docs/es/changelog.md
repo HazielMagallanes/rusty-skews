@@ -15,6 +15,14 @@ versiones.
 
 ### Agregado
 
+* Slice de entrada de M2: eventos de puntero (clic, scroll) sobre la barra con
+  hit testing, enrutados a los módulos como interacciones tipadas; los módulos
+  devuelven `Effect::Action` y el runtime lo ejecuta contra el servicio
+  correspondiente.
+* Módulo `volume` y el adaptador de audio (`wpctl`, excepción CLI documentada
+  por ADR-0005): muestra porcentaje o `MUTED`, el clic alterna el mute y el
+  scroll ajusta 5 %. Los valores por defecto y los ejemplos de configuración
+  ahora listan solo módulos registrados.
 * Herramienta de aceptación M1: `cargo xt bench-live` compila el shell en
   release, espera el primer frame y reporta arranque en frío, CPU en reposo y
   RSS contra los presupuestos documentados (`--seconds` para corridas de soak).

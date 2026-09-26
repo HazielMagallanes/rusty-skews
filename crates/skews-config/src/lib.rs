@@ -147,7 +147,7 @@ fn default_center() -> BarRegion {
 }
 
 fn default_right() -> BarRegion {
-    region(&["cpu", "memory", "battery"])
+    region(&["cpu", "memory", "battery", "volume"])
 }
 
 impl Config {
@@ -248,7 +248,10 @@ mod tests {
         assert_eq!(config.bar.monitor, "*");
         assert_eq!(config.bar.left.modules, vec!["workspaces"]);
         assert_eq!(config.bar.center.modules, vec!["clock"]);
-        assert_eq!(config.bar.right.modules, vec!["cpu", "memory", "battery"]);
+        assert_eq!(
+            config.bar.right.modules,
+            vec!["cpu", "memory", "battery", "volume"]
+        );
         assert!(config.modules.is_empty());
     }
 

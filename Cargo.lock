@@ -1422,6 +1422,7 @@ dependencies = [
  "skews-app",
  "skews-core",
  "skews-ipc-hyprland",
+ "skews-services",
  "skews-sys-linux",
  "toml",
 ]
@@ -1444,6 +1445,9 @@ dependencies = [
 [[package]]
 name = "skews-services"
 version = "0.0.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "skews-shell"
@@ -1462,6 +1466,7 @@ dependencies = [
  "skews-layout",
  "skews-modules",
  "skews-render",
+ "skews-services",
  "skews-text",
  "skews-theme",
  "skews-ui",

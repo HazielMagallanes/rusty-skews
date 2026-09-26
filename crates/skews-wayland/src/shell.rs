@@ -5,12 +5,18 @@ use std::ffi::c_void;
 use std::ptr::NonNull;
 
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
+use smithay_client_toolkit::reexports::client::protocol::wl_pointer::WlPointer;
+use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_seat, wl_surface};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_registry,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
+    seat::{
+        Capability, SeatHandler, SeatState,
+        pointer::{AxisScroll, PointerEvent, PointerEventKind, PointerHandler},
+    },
     shell::{
         WaylandSurface,
         wlr_layer::{
@@ -22,7 +28,6 @@ use smithay_client_toolkit::{
 
 use crate::error::WaylandError;
 use crate::{Connection, GlobalList, ObjectId, Proxy, QueueHandle};
-use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_surface};
 
 /// Options controlling bar surface creation.
 #[derive(Debug, Clone)]
@@ -69,6 +74,39 @@ pub enum BarEvent {
         /// Surface object id.
         id: ObjectId,
     },
+    /// Pointer input on one of the shell's surfaces.
+    Pointer {
+        /// Surface object id the pointer is over.
+        id: ObjectId,
+        /// Position in surface-local coordinates.
+        position: (f64, f64),
+        /// What the pointer did.
+        kind: PointerKind,
+    },
+}
+
+/// Pointer interactions the runtime cares about.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PointerKind {
+    /// The pointer moved.
+    Motion,
+    /// A button was pressed (Linux button codes, e.g. `0x110` = left).
+    Press {
+        /// The pressed button.
+        button: u32,
+    },
+    /// A button was released.
+    Release {
+        /// The released button.
+        button: u32,
+    },
+    /// Scroll wheel/touchpad motion, normalized to steps (one wheel click = 1.0).
+    Scroll {
+        /// Horizontal steps (positive = right).
+        horizontal: f64,
+        /// Vertical steps (positive = up).
+        vertical: f64,
+    },
 }
 
 struct SurfaceEntry {
@@ -85,11 +123,13 @@ struct SurfaceEntry {
 pub struct BarShell {
     registry_state: RegistryState,
     output_state: OutputState,
+    seat_state: SeatState,
     compositor: CompositorState,
     layer_shell: LayerShell,
     options: BarOptions,
     surfaces: HashMap<ObjectId, SurfaceEntry>,
     events: VecDeque<BarEvent>,
+    pointer: Option<WlPointer>,
 }
 
 impl BarShell {
@@ -113,11 +153,13 @@ impl BarShell {
         Ok(Self {
             registry_state: RegistryState::new(globals),
             output_state: OutputState::new(globals, qh),
+            seat_state: SeatState::new(globals, qh),
             compositor,
             layer_shell,
             options,
             surfaces: HashMap::new(),
             events: VecDeque::new(),
+            pointer: None,
         })
     }
 
@@ -203,7 +245,100 @@ impl ProvidesRegistryState for BarShell {
         &mut self.registry_state
     }
 
-    registry_handlers![OutputState];
+    registry_handlers![OutputState, SeatState];
+}
+
+impl SeatHandler for BarShell {
+    fn seat_state(&mut self) -> &mut SeatState {
+        &mut self.seat_state
+    }
+
+    fn new_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {}
+
+    fn new_capability(
+        &mut self,
+        _conn: &Connection,
+        qh: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Pointer && self.pointer.is_none() {
+            match self.seat_state.get_pointer(qh, &seat) {
+                Ok(pointer) => self.pointer = Some(pointer),
+                Err(error) => tracing::warn!(%error, "failed to create the pointer"),
+            }
+        }
+    }
+
+    fn remove_capability(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Pointer
+            && let Some(pointer) = self.pointer.take()
+        {
+            pointer.release();
+        }
+    }
+
+    fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {
+    }
+}
+
+impl PointerHandler for BarShell {
+    fn pointer_frame(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _pointer: &WlPointer,
+        events: &[PointerEvent],
+    ) {
+        for event in events {
+            let id = event.surface.id();
+            if !self.surfaces.contains_key(&id) {
+                continue;
+            }
+
+            let kind = match event.kind {
+                PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
+                    Some(PointerKind::Motion)
+                }
+                PointerEventKind::Leave { .. } => None,
+                PointerEventKind::Press { button, .. } => Some(PointerKind::Press { button }),
+                PointerEventKind::Release { button, .. } => Some(PointerKind::Release { button }),
+                PointerEventKind::Axis {
+                    horizontal,
+                    vertical,
+                    ..
+                } => {
+                    let steps = |axis: AxisScroll| -> f64 {
+                        if axis.value120 != 0 {
+                            f64::from(axis.value120) / 120.0
+                        } else if axis.discrete != 0 {
+                            f64::from(axis.discrete)
+                        } else {
+                            axis.absolute.signum() * f64::from(axis.absolute.abs() > 0.0)
+                        }
+                    };
+                    Some(PointerKind::Scroll {
+                        horizontal: steps(horizontal),
+                        vertical: steps(vertical),
+                    })
+                }
+            };
+
+            if let Some(kind) = kind {
+                self.events.push_back(BarEvent::Pointer {
+                    id: id.clone(),
+                    position: event.position,
+                    kind,
+                });
+            }
+        }
+    }
 }
 
 impl OutputHandler for BarShell {

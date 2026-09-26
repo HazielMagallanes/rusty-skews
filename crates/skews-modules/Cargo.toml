@@ -19,3 +19,4 @@ toml = { workspace = true }
 chrono = { workspace = true }
 skews-sys-linux = { workspace = true }
 skews-ipc-hyprland = { workspace = true }
+skews-services = { workspace = true }

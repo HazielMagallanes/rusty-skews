@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use skews_config::Config;
-use skews_core::{Effect, Effects, LogLevel, ModuleId};
+use skews_core::{Effect, Effects, InteractionKind, LogLevel, ModuleId};
 
 mod module;
 mod registry;
@@ -31,6 +31,13 @@ pub enum Msg {
     },
     /// A typed compositor event.
     Compositor(skews_ipc_hyprland::HyprEvent),
+    /// The user interacted with a module (click, scroll).
+    Interaction {
+        /// Module the interaction targeted.
+        module: ModuleId,
+        /// What the user did.
+        kind: InteractionKind,
+    },
 }
 
 /// Errors produced while building or updating the kernel.
@@ -117,7 +124,7 @@ impl Shell {
     pub fn update(&mut self, msg: Msg) -> Effects {
         match msg {
             Msg::ConfigLoaded(config) => self.apply_config(*config),
-            Msg::Tick { .. } | Msg::Compositor(_) => self.forward(&msg),
+            Msg::Tick { .. } | Msg::Compositor(_) | Msg::Interaction { .. } => self.forward(&msg),
         }
     }
 

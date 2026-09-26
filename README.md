@@ -70,7 +70,7 @@ modules = ["workspaces", "media"]
 [bar.center]
 modules = ["clock"]
 [bar.right]
-modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
+modules = ["cpu", "memory", "battery", "volume"]
 ```
 
 ---
@@ -80,7 +80,7 @@ modules = ["cpu", "memory", "battery", "network", "audio", "tray"]
 | Milestone | Scope | Status |
 |---|---|---|
 | M0 | Scaffold, CI, ADRs, doctor, hello bar on all outputs | ✅ |
-| M1 | Kernel + UI core (text, layout, render, ui) + bar modules | ⏳ |
+| M1 | Kernel + UI core (text, layout, render, ui) + bar modules | ✅ |
 | M2 | Panels, services (audio/network/bluetooth/media/notify/tray), OSD | ⏳ |
 | M3 | Launcher with providers (apps, math, actions) | ⏳ |
 | M4 | Wallpaper selector and theming pipeline | ⏳ |
