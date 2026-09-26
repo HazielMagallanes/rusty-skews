@@ -71,11 +71,20 @@ fn init_tracing(verbosity: u8) {
         .init();
 }
 
+/// Tick cadence for clocks and sensors.
+///
+/// The clock only needs minute precision and the performance budget treats
+/// sensor polling of a few seconds as fine; a slower tick directly reduces
+/// redraws and idle CPU.
+const TICK_INTERVAL: Duration = Duration::from_secs(2);
+
 /// Per-surface GPU state.
 struct SurfaceState {
     gpu: GpuSurface,
     width: u32,
     height: u32,
+    /// Size the swapchain was last configured for.
+    configured: Option<(u32, u32)>,
 }
 
 /// Runtime state shared by the calloop sources.
@@ -91,7 +100,7 @@ struct Runtime {
 impl Runtime {
     fn new(shell: Shell, theme: Tokens) -> Self {
         let text_engine = TextEngine::new(theme.font_family.clone());
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let instance = create_instance();
 
         Self {
             shell,
@@ -177,8 +186,15 @@ impl Runtime {
                 self.renderer = Some(renderer);
             }
 
-            self.surfaces
-                .insert(id.clone(), SurfaceState { gpu, width, height });
+            self.surfaces.insert(
+                id.clone(),
+                SurfaceState {
+                    gpu,
+                    width,
+                    height,
+                    configured: None,
+                },
+            );
         }
 
         if let Some(state) = self.surfaces.get_mut(id) {
@@ -218,9 +234,15 @@ impl Runtime {
             return Ok(());
         };
 
-        renderer
-            .configure_surface(&mut state.gpu, state.width, state.height)
-            .context("failed to configure the GPU surface")?;
+        // Reconfiguring the swapchain is expensive; only do it when the size
+        // actually changed (or on the first frame).
+        let size = (state.width, state.height);
+        if state.configured != Some(size) {
+            renderer
+                .configure_surface(&mut state.gpu, state.width, state.height)
+                .context("failed to configure the GPU surface")?;
+            state.configured = Some(size);
+        }
 
         let scene = build_scene(
             &self.shell,
@@ -321,13 +343,13 @@ fn run(args: &Args) -> Result<()> {
     // Tick timer: clock, sensors.
     {
         let runtime = Rc::clone(&runtime);
-        let timer = Timer::from_duration(Duration::from_secs(1));
+        let timer = Timer::from_duration(TICK_INTERVAL);
         handle
             .insert_source(timer, move |_instant, (), bar: &mut BarShell| {
                 runtime
                     .borrow_mut()
                     .dispatch(Msg::Tick { unix_ms: unix_ms() }, bar);
-                TimeoutAction::ToDuration(Duration::from_secs(1))
+                TimeoutAction::ToDuration(TICK_INTERVAL)
             })
             .map_err(|error| anyhow::anyhow!("failed to register the tick timer: {error:?}"))?;
     }
@@ -424,6 +446,29 @@ fn setup_hyprland(runtime: &Rc<RefCell<Runtime>>, bar: &mut BarShell, sender: &S
         Ok(_handle) => info!("listening to Hyprland events"),
         Err(error) => warn!(%error, "failed to start the Hyprland event listener"),
     }
+}
+
+/// Creates the wgpu instance, preferring Vulkan.
+///
+/// `Backends::all()` would also initialize the GL driver, which maps over
+/// 100 MiB of extra memory on Mesa; GL is only used as a fallback when no
+/// Vulkan adapter exists.
+fn create_instance() -> wgpu::Instance {
+    let vulkan = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::VULKAN,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+
+    let adapters = pollster::block_on(vulkan.enumerate_adapters(wgpu::Backends::VULKAN));
+    if adapters.is_empty() {
+        warn!("no Vulkan adapter found; falling back to the GL backend");
+        return wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::GL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+    }
+
+    vulkan
 }
 
 fn load_config(explicit: Option<PathBuf>) -> Result<(Config, PathBuf)> {

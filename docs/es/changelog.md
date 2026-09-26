@@ -15,7 +15,17 @@ versiones.
 
 ### Agregado
 
-* Runtime: bucle de eventos con calloop y timer de un segundo (reloj y
+* Herramienta de aceptación M1: `cargo xt bench-live` compila el shell en
+  release, espera el primer frame y reporta arranque en frío, CPU en reposo y
+  RSS contra los presupuestos documentados (`--seconds` para corridas de soak).
+* Correcciones de rendimiento de la corrida de aceptación: la instancia de wgpu
+  pide **solo Vulkan** (GL queda como respaldo), las superficies se
+  reconfiguran solo cuando cambia su tamaño, y reloj/sensores tickean cada 2 s.
+  Medido en la máquina: 81 ms de arranque, 0.12 % de CPU en reposo, 31.6 MiB de
+  RSS — todos los presupuestos pasan.
+* Documentación: los presupuestos de rendimiento ahora registran las mediciones
+  de aceptación de M1.
+* Runtime: bucle de eventos con calloop y timer de dos segundos (reloj y
   sensores se actualizan en vivo), recarga en caliente de la configuración con
   deduplicación de escrituras idénticas y fallback a la última válida, y
   reconfiguración automática de superficies cuando cambia la altura de la

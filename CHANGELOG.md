@@ -15,7 +15,15 @@ ships releases.
 
 ### Added
 
-* Runtime: calloop event loop with a one-second tick timer (clock and sensors
+* M1 acceptance tooling: `cargo xt bench-live` builds the release shell, waits
+  for the first frame and reports cold start, idle CPU and RSS against the
+  documented budgets (`--seconds` for soak runs).
+* Performance fixes from the acceptance run: the wgpu instance requests
+  **Vulkan only** (GL stays as a fallback), surfaces are reconfigured only when
+  their size changes, and clocks/sensors tick every 2 s. Measured on device:
+  81 ms cold start, 0.12 % idle CPU, 31.6 MiB RSS — all budgets pass.
+* Docs: the performance budgets now record the M1 acceptance measurements.
+* Runtime: calloop event loop with a two-second tick timer (clock and sensors
   update live), configuration hot reload with identical-write deduplication and
   last-good fallback, and automatic surface reconfiguration when the bar height
   changes.

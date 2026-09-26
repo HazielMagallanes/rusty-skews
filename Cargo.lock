@@ -1454,6 +1454,7 @@ dependencies = [
  "calloop-wayland-source",
  "clap",
  "notify",
+ "pollster",
  "skews-app",
  "skews-config",
  "skews-core",

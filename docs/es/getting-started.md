@@ -30,6 +30,9 @@ cargo xt ci
 
 # Chequeo de entorno: Wayland, compositor, GPU, configuración, tema.
 cargo run -p skews-ctl -- doctor
+
+# Presupuestos en vivo: arranque en frío, CPU en reposo y RSS del build release.
+cargo xt bench-live
 ```
 
 `doctor` sale con código distinto de cero cuando falta algo requerido; agregá

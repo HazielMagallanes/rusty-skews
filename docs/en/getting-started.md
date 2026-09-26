@@ -30,6 +30,9 @@ cargo xt ci
 
 # Environment check: Wayland, compositor, GPU, config, theme.
 cargo run -p skews-ctl -- doctor
+
+# Live budgets: cold start, idle CPU and RSS of the release build.
+cargo xt bench-live
 ```
 
 `doctor` exits non-zero when something required is missing; add `--strict` to
