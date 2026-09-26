@@ -62,6 +62,9 @@ pub struct BarConfig {
     /// Output name the bar binds to, or `*` for every output.
     #[serde(default = "default_monitor")]
     pub monitor: String,
+    /// Start with the bar hidden (`rusty-skews-ctl toggle-bar` shows it again).
+    #[serde(default)]
+    pub hidden: bool,
     /// Modules placed in the left region.
     #[serde(default = "default_left")]
     pub left: BarRegion,
@@ -87,6 +90,7 @@ impl Default for BarConfig {
         Self {
             height: default_height(),
             monitor: default_monitor(),
+            hidden: false,
             left: default_left(),
             center: default_center(),
             right: default_right(),
@@ -255,6 +259,7 @@ mod tests {
 
         assert_eq!(config.bar.height, 32);
         assert_eq!(config.bar.monitor, "*");
+        assert!(!config.bar.hidden);
         assert_eq!(config.bar.left.modules, vec!["workspaces"]);
         assert_eq!(config.bar.center.modules, vec!["media", "clock"]);
         assert_eq!(
@@ -271,6 +276,15 @@ mod tests {
             ]
         );
         assert!(config.modules.is_empty());
+    }
+
+    #[test]
+    fn bar_can_start_hidden() {
+        let config = Config::from_toml_str("[bar]\nhidden = true\n").unwrap();
+        assert!(config.bar.hidden);
+
+        let config = Config::from_toml_str("[bar]\nhidden = false\n").unwrap();
+        assert!(!config.bar.hidden);
     }
 
     #[test]

@@ -15,6 +15,11 @@ ships releases.
 
 ### Added
 
+* M2 bar-control slice: a Unix control socket
+  (`$XDG_RUNTIME_DIR/rusty-skews/control.sock`) with `toggle-bar`/`show-bar`/
+  `hide-bar` commands in `rusty-skews-ctl`, a `[bar] hidden` option, and
+  off-screen bar hiding that releases the exclusive zone. `cargo xt install`
+  copies both binaries to `~/.local/bin` for compositor keybinds.
 * M2 media/calendar slice: an MPRIS media module (transport chip on the bar,
   play/pause/next/previous over D-Bus, controls panel), a calendar module with
   a Monday-first month grid panel, and a transient volume OSD popup after

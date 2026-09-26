@@ -9,13 +9,17 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use calloop::EventLoop;
 use calloop::channel::{Event as ChannelEvent, Sender, channel};
+use calloop::generic::Generic;
 use calloop::timer::{TimeoutAction, Timer};
+use calloop::{Interest, Mode, PostAction};
 use calloop_wayland_source::WaylandSource;
 use clap::Parser;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use skews_app::{ListItem, ModuleOutput, ModuleSlot, Msg, PanelContent, Shell};
 use skews_config::{Config, default_config_path};
-use skews_core::{Action, Effect, Effects, InteractionKind, ListSource, LogLevel, ModuleId};
+use skews_core::{
+    Action, ControlCommand, Effect, Effects, InteractionKind, ListSource, LogLevel, ModuleId,
+};
 use skews_ipc_hyprland::{HyprEvent, active_workspace, event_socket_path, spawn_event_listener};
 use skews_layout::{BarLayoutOptions, TextMetrics};
 use skews_render::{GpuSurface, Renderer};
@@ -25,8 +29,8 @@ use skews_text::TextEngine;
 use skews_theme::{Tokens, default_palette_path};
 use skews_ui::{DrawItem, Scene};
 use skews_wayland::{
-    BarEvent, BarOptions, BarShell, Connection, EventQueue, Keysym, ObjectId, PANEL_GAP,
-    PanelOptions, PointerKind, QueueHandle, display_handle, registry_queue_init, window_handle,
+    BarEvent, BarOptions, BarShell, Connection, EventQueue, Keysym, ObjectId, PanelOptions,
+    PointerKind, QueueHandle, display_handle, registry_queue_init, window_handle,
 };
 use tracing::{debug, error, info, warn};
 
@@ -176,6 +180,7 @@ struct Runtime {
     last_output: Option<String>,
     pending_interaction: Option<(ModuleId, InteractionKind)>,
     actions_executed: bool,
+    bar_hidden: bool,
 }
 
 impl Runtime {
@@ -206,6 +211,50 @@ impl Runtime {
             last_output: None,
             pending_interaction: None,
             actions_executed: false,
+            bar_hidden: false,
+        }
+    }
+
+    /// Applies a control command received over the control socket.
+    fn apply_control(&mut self, command: ControlCommand, bar: &mut BarShell) {
+        let hidden = match command {
+            ControlCommand::ToggleBar => !self.bar_hidden,
+            ControlCommand::ShowBar => false,
+            ControlCommand::HideBar => true,
+        };
+
+        if hidden == self.bar_hidden {
+            return;
+        }
+        self.bar_hidden = hidden;
+
+        // Panels and popups hang from the bar; close them when hiding.
+        if hidden {
+            let panels: Vec<ObjectId> = self.panels.keys().cloned().collect();
+            for id in panels {
+                bar.hide_panel(&id);
+            }
+            if let Some(id) = self.popup.take() {
+                bar.hide_popup(&id);
+            }
+            self.popup_module = None;
+        }
+
+        bar.set_bars_hidden(hidden);
+        info!(hidden, "bar visibility changed");
+    }
+
+    /// Accepts and applies every pending control command.
+    fn accept_control(&mut self, listener: &std::os::unix::net::UnixListener, bar: &mut BarShell) {
+        loop {
+            match skews_ipc_control::poll_command(listener) {
+                Ok(Some(command)) => self.apply_control(command, bar),
+                Ok(None) => break,
+                Err(error) => {
+                    warn!(%error, "control command rejected");
+                    break;
+                }
+            }
         }
     }
 
@@ -310,7 +359,6 @@ impl Runtime {
         let options = PanelOptions {
             width: NOTIFICATION_WIDTH,
             height: size,
-            margin_top: self.shell.state().bar.height as i32 + PANEL_GAP,
             margin_right: PANEL_MARGIN_RIGHT,
             namespace: String::from("rusty-skews-popup"),
         };
@@ -454,7 +502,6 @@ impl Runtime {
         let options = PanelOptions {
             width: PANEL_WIDTH,
             height: self.panel_height(module),
-            margin_top: self.shell.state().bar.height as i32 + PANEL_GAP,
             margin_right: PANEL_MARGIN_RIGHT,
             namespace: format!("rusty-skews-panel-{module}"),
         };
@@ -1044,6 +1091,7 @@ impl Runtime {
 fn run(args: &Args) -> Result<()> {
     let (config, config_path) = load_config(args.config.clone())?;
     let theme = load_theme(&default_palette_path());
+    let start_hidden = config.bar.hidden;
 
     let mut registry = skews_app::Registry::new();
     skews_modules::register_all(&mut registry);
@@ -1081,10 +1129,15 @@ fn run(args: &Args) -> Result<()> {
     )
     .context("failed to bind bar surfaces")?;
 
+    if start_hidden {
+        bar.set_bars_hidden(true);
+    }
+
     let mut event_loop: EventLoop<BarShell> =
         EventLoop::try_new().context("failed to create the event loop")?;
     let handle = event_loop.handle();
     let runtime = Rc::new(RefCell::new(Runtime::new(shell, theme, qh.clone())));
+    runtime.borrow_mut().bar_hidden = start_hidden;
 
     if let Some(module) = &args.show_panel {
         runtime.borrow_mut().pending_interaction =
@@ -1148,6 +1201,26 @@ fn run(args: &Args) -> Result<()> {
             })?;
     }
 
+    // Control socket: `rusty-skews-ctl toggle-bar` and friends.
+    match skews_ipc_control::bind() {
+        Ok(listener) => {
+            let runtime = Rc::clone(&runtime);
+            handle
+                .insert_source(
+                    Generic::new(listener, Interest::READ, Mode::Level),
+                    move |_, listener, bar: &mut BarShell| {
+                        runtime.borrow_mut().accept_control(listener, bar);
+                        Ok(PostAction::Continue)
+                    },
+                )
+                .context("failed to register the control socket")?;
+            info!("control socket ready");
+        }
+        Err(error) => {
+            warn!(%error, "control socket unavailable; keybinds will not reach the shell");
+        }
+    }
+
     // Tick timer: clock, sensors.
     {
         let runtime = Rc::clone(&runtime);
@@ -1172,6 +1245,8 @@ fn run(args: &Args) -> Result<()> {
     event_loop
         .run(None, &mut bar, |_| {})
         .context("the event loop failed")?;
+
+    skews_ipc_control::cleanup();
 
     Ok(())
 }

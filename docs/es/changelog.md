@@ -15,6 +15,11 @@ versiones.
 
 ### Agregado
 
+* Slice de control de barra de M2: socket Unix de control
+  (`$XDG_RUNTIME_DIR/rusty-skews/control.sock`) con comandos `toggle-bar`/
+  `show-bar`/`hide-bar` en `rusty-skews-ctl`, opción `[bar] hidden` y ocultado
+  fuera de pantalla que libera la zona exclusiva. `cargo xt install` copia
+  ambos binarios a `~/.local/bin` para atajos del compositor.
 * Slice de medios/calendario de M2: módulo de medios MPRIS (chip de transporte
   en la barra, play/pause/next/previous por D-Bus, panel de controles), módulo
   de calendario con panel de mes (semanas que empiezan el lunes) y un OSD de

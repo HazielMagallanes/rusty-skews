@@ -36,5 +36,6 @@ calloop = { workspace = true }
 calloop-wayland-source = { workspace = true }
 notify = { workspace = true }
 skews-ipc-hyprland = { workspace = true }
+skews-ipc-control = { workspace = true }
 pollster = { workspace = true }
 skews-services = { workspace = true }

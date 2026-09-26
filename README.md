@@ -64,6 +64,7 @@ flat `token -> "#rrggbb"`). Missing files fall back to built-in defaults.
 [bar]
 height = 32
 monitor = "*"
+hidden = false           # `rusty-skews-ctl toggle-bar` flips it at runtime
 
 [bar.left]
 modules = ["workspaces"]
@@ -72,6 +73,27 @@ modules = ["media", "clock"]
 [bar.right]
 modules = ["network", "bluetooth", "notifications", "calendar", "cpu", "memory", "battery", "volume"]
 ```
+
+### Control
+
+A running shell answers one-line commands over
+`$XDG_RUNTIME_DIR/rusty-skews/control.sock`:
+
+```sh
+rusty-skews-ctl toggle-bar   # hide the bar if visible, show it if hidden
+rusty-skews-ctl show-bar
+rusty-skews-ctl hide-bar
+```
+
+Wire it to a compositor keybind — Hyprland example:
+
+```ini
+bind = SUPER, D, exec, rusty-skews-ctl toggle-bar
+```
+
+`cargo xt install` puts both binaries in `~/.local/bin` (add `--release` for
+the release profile). Hiding moves the bar off-screen and releases its
+exclusive zone, so windows can use the space while it is hidden.
 
 ---
 
@@ -95,6 +117,7 @@ crates/
   skews-config    TOML schema, validation, path resolution
   skews-theme     tokens from matugen JSON + defaults
   skews-ipc-hyprland  typed compositor events
+  skews-ipc-control   control socket for a running shell
   skews-sys-linux     /proc,/sys readers (coretemp + k10temp)
   skews-bus           D-Bus helpers (M1+)
   skews-services      service adapters (M1+)
@@ -107,7 +130,7 @@ crates/
   skews-modules       built-in modules (M1+)
   skews-shell         the `rusty-skews` binary
   skews-lock          the `rusty-skews-lock` binary (M5)
-  skews-ctl           the `rusty-skews-ctl` binary (doctor today)
+  skews-ctl           the `rusty-skews-ctl` binary (doctor + control)
   skews-testkit       fakes, fixtures, scene assertions (M1+)
 xtask/  docs/  tests/  benches/
 ```

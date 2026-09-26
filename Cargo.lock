@@ -1692,11 +1692,20 @@ dependencies = [
  "pollster",
  "skews-config",
  "skews-core",
+ "skews-ipc-control",
  "skews-theme",
  "skews-wayland",
  "tracing",
  "tracing-subscriber",
  "wgpu",
+]
+
+[[package]]
+name = "skews-ipc-control"
+version = "0.0.0"
+dependencies = [
+ "skews-core",
+ "thiserror",
 ]
 
 [[package]]
@@ -1775,6 +1784,7 @@ dependencies = [
  "skews-app",
  "skews-config",
  "skews-core",
+ "skews-ipc-control",
  "skews-ipc-hyprland",
  "skews-layout",
  "skews-modules",

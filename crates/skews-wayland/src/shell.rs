@@ -58,8 +58,6 @@ pub struct PanelOptions {
     pub width: u32,
     /// Panel height in pixels.
     pub height: u32,
-    /// Distance from the top edge (bar height plus a gap).
-    pub margin_top: i32,
     /// Distance from the right edge.
     pub margin_right: i32,
     /// Layer-shell namespace.
@@ -192,6 +190,7 @@ pub struct BarShell {
     compositor: CompositorState,
     layer_shell: LayerShell,
     options: BarOptions,
+    hidden: bool,
     surfaces: HashMap<ObjectId, SurfaceEntry>,
     outputs: HashMap<String, wl_output::WlOutput>,
     panels: HashMap<ObjectId, PanelEntry>,
@@ -227,6 +226,7 @@ impl BarShell {
             compositor,
             layer_shell,
             options,
+            hidden: false,
             surfaces: HashMap::new(),
             outputs: HashMap::new(),
             panels: HashMap::new(),
@@ -249,18 +249,88 @@ impl BarShell {
     /// events with the new size.
     pub fn set_bar_height(&mut self, height: u32) {
         self.options.height = height;
+        let margin = self.bar_margin_top();
+        let zone = self.bar_exclusive_zone();
+
         for entry in self.surfaces.values() {
             entry.layer.set_size(0, height);
-            entry.layer.set_exclusive_zone(height as i32);
+            entry.layer.set_exclusive_zone(zone);
+            entry.layer.set_margin(margin, 0, 0, 0);
             entry.layer.commit();
         }
+
+        let panel_margin = self.panel_margin_top();
         for entry in self.panels.values() {
-            entry.layer.set_margin(height as i32 + PANEL_GAP, 0, 0, 0);
+            entry.layer.set_margin(panel_margin, 0, 0, 0);
             entry.layer.commit();
         }
         for entry in self.popups.values() {
-            entry.layer.set_margin(height as i32 + PANEL_GAP, 0, 0, 0);
+            entry.layer.set_margin(panel_margin, 0, 0, 0);
             entry.layer.commit();
+        }
+    }
+
+    /// Shows or hides every bar surface.
+    ///
+    /// Hiding moves the bars off-screen with a negative margin and drops the
+    /// exclusive zone, so windows can use the space. Panels and popups stay
+    /// where they are; the runtime closes them when hiding.
+    pub fn set_bars_hidden(&mut self, hidden: bool) {
+        if self.hidden == hidden {
+            return;
+        }
+        self.hidden = hidden;
+
+        let margin = self.bar_margin_top();
+        let zone = self.bar_exclusive_zone();
+        for entry in self.surfaces.values() {
+            entry.layer.set_margin(margin, 0, 0, 0);
+            entry.layer.set_exclusive_zone(zone);
+            entry.layer.commit();
+        }
+
+        let panel_margin = self.panel_margin_top();
+        for entry in self.panels.values() {
+            entry.layer.set_margin(panel_margin, 0, 0, 0);
+            entry.layer.commit();
+        }
+        for entry in self.popups.values() {
+            entry.layer.set_margin(panel_margin, 0, 0, 0);
+            entry.layer.commit();
+        }
+    }
+
+    /// Whether the bars are currently hidden.
+    #[must_use]
+    pub fn bars_hidden(&self) -> bool {
+        self.hidden
+    }
+
+    /// Top margin of the bar: negative when hidden (off-screen).
+    fn bar_margin_top(&self) -> i32 {
+        if self.hidden {
+            -(self.options.height as i32)
+        } else {
+            0
+        }
+    }
+
+    /// Exclusive zone of the bar: zero when hidden.
+    fn bar_exclusive_zone(&self) -> i32 {
+        if self.hidden {
+            0
+        } else {
+            self.options.height as i32
+        }
+    }
+
+    /// Top margin of panels and popups: below the bar, or at the top edge
+    /// when the bar is hidden.
+    fn panel_margin_top(&self) -> i32 {
+        if self.hidden {
+            PANEL_GAP
+        } else {
+            self.options.height as i32 + PANEL_GAP
         }
     }
 
@@ -304,7 +374,7 @@ impl BarShell {
         );
         layer.set_anchor(Anchor::TOP | Anchor::RIGHT);
         layer.set_size(options.width, options.height);
-        layer.set_margin(options.margin_top, options.margin_right, 0, 0);
+        layer.set_margin(self.panel_margin_top(), options.margin_right, 0, 0);
         layer.set_exclusive_zone(0);
         layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         layer.commit();
@@ -359,7 +429,7 @@ impl BarShell {
         );
         layer.set_anchor(Anchor::TOP | Anchor::RIGHT);
         layer.set_size(options.width, options.height);
-        layer.set_margin(options.margin_top, options.margin_right, 0, 0);
+        layer.set_margin(self.panel_margin_top(), options.margin_right, 0, 0);
         layer.set_exclusive_zone(0);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.commit();
@@ -453,7 +523,8 @@ impl BarShell {
 
         layer.set_anchor(Anchor::TOP | Anchor::LEFT | Anchor::RIGHT);
         layer.set_size(0, self.options.height);
-        layer.set_exclusive_zone(self.options.height as i32);
+        layer.set_exclusive_zone(self.bar_exclusive_zone());
+        layer.set_margin(self.bar_margin_top(), 0, 0, 0);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.commit();
 

@@ -66,6 +66,7 @@ y la paleta en `$XDG_CACHE_HOME/rusty-skews/colors.json` (estilo matugen, plano
 [bar]
 height = 32
 monitor = "*"
+hidden = false           # `rusty-skews-ctl toggle-bar` lo alterna en caliente
 
 [bar.left]
 modules = ["workspaces"]
@@ -74,6 +75,27 @@ modules = ["media", "clock"]
 [bar.right]
 modules = ["network", "bluetooth", "notifications", "calendar", "cpu", "memory", "battery", "volume"]
 ```
+
+### Control
+
+Una shell en ejecución responde comandos de una línea por
+`$XDG_RUNTIME_DIR/rusty-skews/control.sock`:
+
+```sh
+rusty-skews-ctl toggle-bar   # oculta la barra si está visible, la muestra si está oculta
+rusty-skews-ctl show-bar
+rusty-skews-ctl hide-bar
+```
+
+Para atarlo a un atajo del compositor — ejemplo Hyprland:
+
+```ini
+bind = SUPER, D, exec, rusty-skews-ctl toggle-bar
+```
+
+`cargo xt install` instala ambos binarios en `~/.local/bin` (agregá
+`--release` para el perfil release). Al ocultarse, la barra se mueve fuera de
+pantalla y libera su zona exclusiva, así las ventanas usan el espacio.
 
 ---
 

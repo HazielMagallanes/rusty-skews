@@ -46,6 +46,12 @@ enum Command {
         #[arg(long)]
         skip_build: bool,
     },
+    /// Install the shell and control binaries into `~/.local/bin`.
+    Install {
+        /// Build the release profile.
+        #[arg(long)]
+        release: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -65,6 +71,7 @@ fn main() -> Result<()> {
             seconds,
             skip_build,
         } => bench_live(&sh, seconds, skip_build),
+        Command::Install { release } => install(&sh, release),
         Command::Ci => ci(&sh),
     }
 }
@@ -132,6 +139,32 @@ fn audit(sh: &Shell) -> Result<()> {
             "==> cargo-audit not installed; skipping (install with `cargo install cargo-audit`)"
         );
     }
+    Ok(())
+}
+
+/// Installs the shell and control binaries into `~/.local/bin`.
+fn install(sh: &Shell, release: bool) -> Result<()> {
+    if release {
+        eprintln!("==> cargo build --release (skews-shell, skews-ctl)");
+        cmd!(sh, "cargo build --release -p skews-shell -p skews-ctl").run()?;
+    } else {
+        eprintln!("==> cargo build (skews-shell, skews-ctl)");
+        cmd!(sh, "cargo build -p skews-shell -p skews-ctl").run()?;
+    }
+
+    let profile = if release { "release" } else { "debug" };
+    let home = std::env::var_os("HOME").ok_or_else(|| anyhow::anyhow!("HOME is not set"))?;
+    let bin_dir = std::path::PathBuf::from(home).join(".local/bin");
+    std::fs::create_dir_all(&bin_dir)?;
+
+    for name in ["rusty-skews", "rusty-skews-ctl"] {
+        let source = std::path::Path::new("target").join(profile).join(name);
+        let destination = bin_dir.join(name);
+        std::fs::copy(&source, &destination)
+            .map_err(|error| anyhow::anyhow!("failed to copy {}: {error}", source.display()))?;
+        eprintln!("installed {}", destination.display());
+    }
+
     Ok(())
 }
 
