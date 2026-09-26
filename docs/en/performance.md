@@ -19,6 +19,30 @@ latency and no allocation churn.
 | App-cache rebuild (3k entries) | < 50 ms |
 | Steady-state heap allocations per frame | 0 |
 
+## Measured (M1 acceptance, 2026-09-25)
+
+Development machine: Intel Iris Xe (Vulkan), Hyprland, 1920×1080 at scale 1,
+release build, 60 s window plus a 15 min soak.
+
+| Metric | Measured | Budget |
+|---|---|---|
+| Cold start → first frame | 81 ms (60 s run) / 91 ms (soak run) | < 150 ms |
+| Idle CPU | 0.12 % (60 s) / 0.11 % (15 min soak) | < 0.2 % |
+| RSS idle | 31.6 MiB (60 s) / 34.4 MiB after 15 min, no drift | < 60 MiB |
+
+Findings from the acceptance run:
+
+* The wgpu instance must request **Vulkan only**: `Backends::all()` also
+  initializes the GL driver, which maps over 100 MiB of extra memory on Mesa.
+  GL remains as a fallback when no Vulkan adapter exists.
+* Swapchain reconfiguration is expensive; surfaces are only reconfigured when
+  their size changes.
+* Clocks and sensors tick every 2 s (`TICK_INTERVAL` in `skews-shell`), which
+  keeps idle CPU well inside budget. Per-module intervals arrive in M2.
+* Steady-state zero allocations (ADR-0002) is **not yet enforced**: the scene
+  builder still allocates per redraw. Arena reuse is planned for the UI-core
+  hardening slice.
+
 ## How budgets are enforced
 
 * **Design**: demand-driven frames, damage tracking, glyph/quads reuse, no

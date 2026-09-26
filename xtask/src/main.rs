@@ -1,5 +1,7 @@
 //! Build automation for the rusty-skews workspace.
 
+mod bench_live;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use xshell::{Shell, cmd};
@@ -35,6 +37,15 @@ enum Command {
         #[arg(long, default_value_t = 5)]
         seconds: u64,
     },
+    /// Measure the live budgets (cold start, idle CPU, RSS) of the release shell.
+    BenchLive {
+        /// Measurement window in seconds (use 900+ for a soak run).
+        #[arg(long, default_value_t = 60)]
+        seconds: u64,
+        /// Skip the release build (assume the binary is current).
+        #[arg(long)]
+        skip_build: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -50,6 +61,10 @@ fn main() -> Result<()> {
         Command::Deny => deny(&sh),
         Command::Audit => audit(&sh),
         Command::Demo { seconds } => demo(&sh, seconds),
+        Command::BenchLive {
+            seconds,
+            skip_build,
+        } => bench_live(&sh, seconds, skip_build),
         Command::Ci => ci(&sh),
     }
 }
@@ -130,6 +145,31 @@ fn demo(sh: &Shell, seconds: u64) -> Result<()> {
     eprintln!("==> rusty-skews demo for {seconds}s (requires a running Wayland session)");
     let seconds = seconds.to_string();
     cmd!(sh, "cargo run -q -p skews-shell -- --exit-after {seconds}").run()?;
+    Ok(())
+}
+
+/// Builds the release shell and measures the live budgets.
+fn bench_live(sh: &Shell, seconds: u64, skip_build: bool) -> Result<()> {
+    if !skip_build {
+        eprintln!("==> cargo build --release -p skews-shell");
+        cmd!(sh, "cargo build --release -p skews-shell").run()?;
+    }
+
+    let binary = workspace_root().join("target/release/rusty-skews");
+    anyhow::ensure!(
+        binary.exists(),
+        "release binary missing at {}; run without --skip-build",
+        binary.display()
+    );
+
+    eprintln!("==> measuring for {seconds}s (requires a running Wayland session)");
+    let log = bench_live::default_log_path();
+    let report = bench_live::run(&binary, seconds, &log)?;
+    print!("{}", report.render());
+    eprintln!("log: {}", log.display());
+
+    anyhow::ensure!(report.all_budgets_pass(), "live budgets not met");
+
     Ok(())
 }
 
