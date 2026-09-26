@@ -24,6 +24,36 @@ pub enum ModuleOutput {
     },
 }
 
+/// A row in a module's list panel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListItem {
+    /// Primary text (network name, device name, …).
+    pub label: String,
+    /// Secondary text (signal, state, …).
+    pub detail: String,
+    /// Whether this row is the active/selected entry.
+    pub active: bool,
+}
+
+/// Panel content published by a module.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PanelContent {
+    /// Volume slider panel.
+    Volume {
+        /// Level in `0.0..=100.0`.
+        percent: f32,
+        /// Whether the sink is muted.
+        muted: bool,
+    },
+    /// A selectable list panel.
+    List {
+        /// Panel title.
+        title: String,
+        /// Rows in display order; selection reports the index.
+        items: Vec<ListItem>,
+    },
+}
+
 /// A shell module: bar widget, panel provider or launcher provider.
 pub trait Module: Send {
     /// Stable module id, matching the configuration key.
@@ -34,4 +64,9 @@ pub trait Module: Send {
 
     /// Returns the current display output.
     fn output(&self) -> ModuleOutput;
+
+    /// Returns the module's panel content, when it has a panel.
+    fn panel(&self) -> Option<PanelContent> {
+        None
+    }
 }

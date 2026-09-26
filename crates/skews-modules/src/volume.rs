@@ -18,6 +18,7 @@ type Reader = Box<dyn Fn() -> Option<AudioStatus> + Send>;
 pub struct Volume {
     id: ModuleId,
     reader: Reader,
+    current: Option<AudioStatus>,
     output: ModuleOutput,
 }
 
@@ -33,12 +34,15 @@ impl Volume {
         Self {
             id: ModuleId::from("volume"),
             reader,
+            current: None,
             output: ModuleOutput::Empty,
         }
     }
 
     fn refresh(&mut self) -> Effects {
-        let output = match (self.reader)() {
+        self.current = (self.reader)();
+
+        let output = match self.current {
             Some(status) => ModuleOutput::Level {
                 percent: status.volume * 100.0,
                 muted: status.muted,
@@ -76,6 +80,15 @@ impl Module for Volume {
 
     fn output(&self) -> ModuleOutput {
         self.output.clone()
+    }
+
+    fn panel(&self) -> Option<skews_app::PanelContent> {
+        let (percent, muted) = match self.current {
+            Some(status) => (status.volume * 100.0, status.muted),
+            None => (0.0, false),
+        };
+
+        Some(skews_app::PanelContent::Volume { percent, muted })
     }
 }
 

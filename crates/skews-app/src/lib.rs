@@ -16,7 +16,7 @@ use skews_core::{Effect, Effects, InteractionKind, LogLevel, ModuleId};
 mod module;
 mod registry;
 
-pub use module::{Module, ModuleOutput};
+pub use module::{ListItem, Module, ModuleOutput, PanelContent};
 pub use registry::{Registry, RegistryError};
 
 /// Messages delivered to the kernel.
@@ -37,6 +37,18 @@ pub enum Msg {
         module: ModuleId,
         /// What the user did.
         kind: InteractionKind,
+    },
+    /// A module's panel became visible; refresh panel-only data.
+    PanelOpened {
+        /// Module whose panel opened.
+        module: ModuleId,
+    },
+    /// A list row of a module's panel was selected.
+    ListSelect {
+        /// Module whose panel row was selected.
+        module: ModuleId,
+        /// Row index, as published in the module's panel content.
+        index: usize,
     },
 }
 
@@ -124,7 +136,11 @@ impl Shell {
     pub fn update(&mut self, msg: Msg) -> Effects {
         match msg {
             Msg::ConfigLoaded(config) => self.apply_config(*config),
-            Msg::Tick { .. } | Msg::Compositor(_) | Msg::Interaction { .. } => self.forward(&msg),
+            Msg::Tick { .. }
+            | Msg::Compositor(_)
+            | Msg::Interaction { .. }
+            | Msg::PanelOpened { .. }
+            | Msg::ListSelect { .. } => self.forward(&msg),
         }
     }
 
@@ -148,6 +164,12 @@ impl Shell {
             center: self.state.bar.center.modules.iter().map(slot).collect(),
             right: self.state.bar.right.modules.iter().map(slot).collect(),
         }
+    }
+
+    /// Returns a module's panel content, when it has a panel.
+    #[must_use]
+    pub fn panel_content(&self, module: &ModuleId) -> Option<crate::PanelContent> {
+        self.modules.get(module).and_then(|module| module.panel())
     }
 
     fn apply_config(&mut self, config: Config) -> Effects {
